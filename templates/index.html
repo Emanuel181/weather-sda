@@ -7,26 +7,23 @@
 {% block content %}
   <h1 class="mb-4">Check the Weather (No Refresh)</h1>
 
-  <!-- Input group with manual entry and detect location -->
+  <!-- Input group with manual entry, Get Weather, and Detect Location buttons -->
   <div class="d-flex mb-3" style="max-width: 400px;">
     <input type="text" id="cityInput"
            class="form-control animate__animated animate__bounceInLeft"
            placeholder="Enter city name" />
-    <button id="getWeatherBtn" class="btn btn-primary animate__animated animate__bounceInRight ms-2"
-            onclick="fetchWeather()">
+    <button id="getWeatherBtn" class="btn btn-primary animate__animated animate__bounceInRight ms-2">
       Get Weather
     </button>
-    <button class="btn btn-secondary ms-2" onclick="detectLocation()">
+    <button id="detectLocationBtn" class="btn btn-secondary ms-2">
       Detect Location
     </button>
   </div>
 
-  <!-- Temperature unit toggle -->
-  <form action="{{ url_for('toggle_unit') }}" method="POST" class="mb-3" style="max-width: 400px;">
-    <button type="submit" class="btn btn-outline-info">
-      Toggle °C/°F (Current: {{ temp_unit }})
-    </button>
-  </form>
+  <!-- Temperature unit toggle button (AJAX toggle, no refresh) -->
+  <button id="toggleUnitBtn" class="btn btn-outline-info mb-3">
+    Toggle °C/°F (Current: {{ temp_unit }})
+  </button>
 
   <!-- Weather result with icon -->
   <div id="weatherResult" class="alert d-none" style="min-height: 50px;">
@@ -35,10 +32,7 @@
   </div>
 
   <!-- Add to favorites form -->
-  <form method="POST"
-        action="{{ url_for('add_favorite') }}"
-        style="display:none;"
-        id="favoritesForm"
+  <form method="POST" action="{{ url_for('add_favorite') }}" style="display:none;" id="favoritesForm"
         class="animate__animated animate__zoomIn">
     <input type="hidden" name="favorite_city" id="favoriteCityInput" />
     <button type="submit" class="btn btn-warning">Add to Favorites</button>
@@ -57,14 +51,14 @@
   <!-- Real-Time Chat Section -->
   <div class="chat-section">
     <h2 class="mb-3">Simple Chat</h2>
-    <div id="chatMessages"
-         class="chat-messages mb-3 p-2"
+    <div id="chatMessages" class="chat-messages mb-3 p-2"
          style="border: 1px solid #ddd; max-height: 200px; overflow-y: auto; border-radius: 5px;">
     </div>
     <div class="input-group" style="max-width: 400px;">
-      <input type="text" id="chatInput" class="form-control"
-             placeholder="Enter chat message..." />
-      <button class="btn btn-success" onclick="sendChat()">Send</button>
+      <input type="text" id="chatInput" class="form-control" placeholder="Enter chat message..." />
+      <button id="sendChatBtn" class="btn btn-success">
+        Send
+      </button>
     </div>
   </div>
 
@@ -85,248 +79,280 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <script>
-    // Global variable for temperature unit passed from backend
-    var tempUnit = "{{ temp_unit }}";
+    document.addEventListener("DOMContentLoaded", function() {
+      // Global variable for temperature unit, initially passed from backend
+      var tempUnit = "{{ temp_unit }}";
 
-    // 1) Socket.IO Setup
-    var socket = io();
-    socket.on('connect', function() {
-      console.log('Connected to server with SID:', socket.id);
-    });
-    socket.on('connect_error', function(error) {
-      console.error('Connection Error:', error);
-    });
-    socket.on('chat_message', function(data) {
-      var chatBox = document.getElementById('chatMessages');
-      var p = document.createElement('p');
-      p.className = "animate__animated animate__fadeInUp";
-      p.textContent = data.message;
-      chatBox.appendChild(p);
-      chatBox.scrollTop = chatBox.scrollHeight;
-    });
-    function sendChat() {
-      var input = document.getElementById('chatInput');
-      var msg = input.value.trim();
-      if (msg) {
-        socket.emit('chat_message', { text: msg });
-        input.value = '';
-      }
-    }
+      // 1) Socket.IO Setup
+      var socket = io();
+      socket.on('connect', function() {
+        console.log('Connected to server with SID:', socket.id);
+      });
+      socket.on('connect_error', function(error) {
+        console.error('Connection Error:', error);
+      });
+      socket.on('chat_message', function(data) {
+        var chatBox = document.getElementById('chatMessages');
+        var p = document.createElement('p');
+        p.className = "animate__animated animate__fadeInUp";
+        p.textContent = data.message;
+        chatBox.appendChild(p);
+        chatBox.scrollTop = chatBox.scrollHeight;
+      });
 
-    // 2) Weather + Forecast Functions
-    async function fetchWeather() {
-      const cityInput = document.getElementById('cityInput');
-      const city = cityInput.value.trim();
-      if (!city) return;
-      clearWeatherDisplay();
-      setButtonLoading(true);
-      try {
-        const resp = await fetch(`/api/weather?city=${encodeURIComponent(city)}`);
-        const data = await resp.json();
-        if (data.error) {
-          displayWeatherError(data.error);
-        } else {
-          displayWeatherData(data);
-          await fetchForecast(data.city);
-          showToast("Weather data fetched successfully!");
-          fireConfetti();
+      // 2) Attach click event listeners to buttons
+      document.getElementById('getWeatherBtn').addEventListener("click", fetchWeather);
+      document.getElementById('detectLocationBtn').addEventListener("click", detectLocation);
+      document.getElementById('sendChatBtn').addEventListener("click", function() {
+        var input = document.getElementById('chatInput');
+        var msg = input.value.trim();
+        if (msg) {
+          socket.emit('chat_message', { text: msg });
+          input.value = '';
         }
-      } catch (err) {
-        console.error("Request failed:", err);
-        displayWeatherError(err);
-      } finally {
-        setButtonLoading(false);
-      }
-    }
+      });
+      document.getElementById('toggleUnitBtn').addEventListener("click", toggleUnit);
 
-    async function fetchForecast(city) {
-      const forecastSection = document.getElementById('forecastSection');
-      const chartCanvas = document.getElementById('forecastChart');
-      try {
-        const resp = await fetch(`/api/forecast?city=${encodeURIComponent(city)}`);
-        const data = await resp.json();
-        if (data.error || !data.forecast) return;
-        forecastSection.style.display = 'block';
-        const labels = data.forecast.map(item => item.date);
-        const temps = data.forecast.map(item => item.temp);
-        if (window.forecastChartInstance) {
-          window.forecastChartInstance.destroy();
-        }
-        window.forecastChartInstance = new Chart(chartCanvas, {
-          type: 'line',
-          data: {
-            labels: labels,
-            datasets: [{
-              label: 'Temperature (' + (tempUnit === "imperial" ? "°F" : "°C") + ')',
-              data: temps,
-              borderColor: 'rgba(54, 162, 235, 1)',
-              backgroundColor: 'rgba(54, 162, 235, 0.2)',
-              fill: true,
-              tension: 0.3
-            }]
-          },
-          options: {
-            responsive: false,
-            maintainAspectRatio: false,
-            scales: {
-              y: { beginAtZero: false }
-            }
+      // 3) Weather + Forecast Functions
+      async function fetchWeather() {
+        const cityInput = document.getElementById('cityInput');
+        const city = cityInput.value.trim();
+        if (!city) return;
+        clearWeatherDisplay();
+        setButtonLoading(true);
+        try {
+          const resp = await fetch(`/api/weather?city=${encodeURIComponent(city)}`);
+          const data = await resp.json();
+          if (data.error) {
+            displayWeatherError(data.error);
+          } else {
+            displayWeatherData(data);
+            await fetchForecast(data.city);
+            showToast("Weather data fetched successfully!");
+            fireConfetti();
           }
-        });
-      } catch (err) {
-        console.error("Forecast fetch failed:", err);
+        } catch (err) {
+          console.error("Request failed:", err);
+          displayWeatherError(err);
+        } finally {
+          setButtonLoading(false);
+        }
       }
-    }
 
-    function clearWeatherDisplay() {
-      const weatherResult = document.getElementById('weatherResult');
-      weatherResult.classList.add('d-none');
-      weatherResult.innerHTML = '';
-      const weatherIcon = document.getElementById('weatherIcon');
-      if (weatherIcon) weatherIcon.style.display = 'none';
-      document.getElementById('favoritesForm').style.display = 'none';
-    }
-
-    function displayWeatherError(error) {
-      const weatherResult = document.getElementById('weatherResult');
-      weatherResult.textContent = "Error: " + error;
-      weatherResult.className = "alert alert-danger animate__animated animate__fadeIn";
-      weatherResult.classList.remove('d-none');
-    }
-
-    function displayWeatherData(data) {
-  const weatherResult = document.getElementById('weatherResult');
-  let weatherText = document.getElementById('weatherText');
-  if (!weatherText) {
-    console.warn("Element with id 'weatherText' not found. Creating it dynamically.");
-    weatherText = document.createElement('span');
-    weatherText.id = 'weatherText';
-    weatherResult.appendChild(weatherText);
-  }
-  weatherText.innerHTML = `<strong>Weather for ${data.city}:</strong> ${data.weather_info}`;
-  weatherResult.className = "alert alert-success animate__animated animate__fadeIn";
-  weatherResult.classList.remove('d-none');
-
-  const weatherIcon = document.getElementById('weatherIcon');
-  if (data.icon && weatherIcon) {
-    weatherIcon.src = "https://openweathermap.org/img/wn/" + data.icon + "@2x.png";
-    weatherIcon.style.display = 'inline';
-  }
-
-  const favoritesForm = document.getElementById('favoritesForm');
-  if (favoritesForm) {
-    favoritesForm.style.display = 'block';
-  }
-  const favoriteCityInput = document.getElementById('favoriteCityInput');
-  if (favoriteCityInput) {
-    favoriteCityInput.value = data.city;
-  }
-  updateBackground(data.weather_main);
-}
-
-    // 3) Detect Location and fetch weather by coordinates
-    function detectLocation() {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(function(position) {
-          fetchWeatherByCoords(position.coords.latitude, position.coords.longitude);
-        }, function(error) {
-          console.error("Geolocation error:", error);
-          showToast("Unable to retrieve location.");
-        });
-      } else {
-        showToast("Geolocation is not supported by your browser.");
+      async function fetchForecast(city) {
+        const forecastSection = document.getElementById('forecastSection');
+        const chartCanvas = document.getElementById('forecastChart');
+        try {
+          const resp = await fetch(`/api/forecast?city=${encodeURIComponent(city)}`);
+          const data = await resp.json();
+          if (data.error || !data.forecast) return;
+          forecastSection.style.display = 'block';
+          const labels = data.forecast.map(item => item.date);
+          const temps = data.forecast.map(item => item.temp);
+          if (window.forecastChartInstance) {
+            window.forecastChartInstance.destroy();
+          }
+          window.forecastChartInstance = new Chart(chartCanvas, {
+            type: 'line',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: 'Temperature (' + (tempUnit === "imperial" ? "°F" : "°C") + ')',
+                data: temps,
+                borderColor: 'rgba(54, 162, 235, 1)',
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                fill: true,
+                tension: 0.3
+              }]
+            },
+            options: {
+              responsive: false,
+              maintainAspectRatio: false,
+              scales: {
+                y: { beginAtZero: false }
+              }
+            }
+          });
+        } catch (err) {
+          console.error("Forecast fetch failed:", err);
+        }
       }
-    }
 
-    async function fetchWeatherByCoords(lat, lon) {
-      clearWeatherDisplay();
-      setButtonLoading(true);
-      try {
-        const resp = await fetch(`/api/weather?lat=${lat}&lon=${lon}`);
-        const data = await resp.json();
-        if (data.error) {
-          displayWeatherError(data.error);
+      function clearWeatherDisplay() {
+        const weatherResult = document.getElementById('weatherResult');
+        weatherResult.classList.add('d-none');
+        weatherResult.innerHTML = '';
+        const weatherIcon = document.getElementById('weatherIcon');
+        if (weatherIcon) weatherIcon.style.display = 'none';
+        document.getElementById('favoritesForm').style.display = 'none';
+      }
+
+      function displayWeatherError(error) {
+        const weatherResult = document.getElementById('weatherResult');
+        weatherResult.textContent = "Error: " + error;
+        weatherResult.className = "alert alert-danger animate__animated animate__fadeIn";
+        weatherResult.classList.remove('d-none');
+      }
+
+      function displayWeatherData(data) {
+        const weatherResult = document.getElementById('weatherResult');
+        var weatherText = document.getElementById('weatherText');
+        if (!weatherText) {
+          console.warn("Element with id 'weatherText' not found. Creating it.");
+          weatherText = document.createElement('span');
+          weatherText.id = 'weatherText';
+          weatherResult.appendChild(weatherText);
+        }
+        weatherText.innerHTML = `<strong>Weather for ${data.city}:</strong> ${data.weather_info}`;
+        weatherResult.className = "alert alert-success animate__animated animate__fadeIn";
+        weatherResult.classList.remove('d-none');
+        const weatherIcon = document.getElementById('weatherIcon');
+        if (data.icon && weatherIcon) {
+          weatherIcon.src = "https://openweathermap.org/img/wn/" + data.icon + "@2x.png";
+          weatherIcon.style.display = 'inline';
+        }
+        document.getElementById('favoritesForm').style.display = 'block';
+        document.getElementById('favoriteCityInput').value = data.city;
+        updateBackground(data.weather_main);
+      }
+
+      function updateBackground(condition) {
+        let bgColor = "";
+        if (!condition) return;
+        condition = condition.toLowerCase();
+        if (condition.includes("clear")) {
+          bgColor = "linear-gradient(135deg, #81ecec, #74b9ff)";
+        } else if (condition.includes("cloud")) {
+          bgColor = "linear-gradient(135deg, #dfe6e9, #b2bec3)";
+        } else if (condition.includes("rain")) {
+          bgColor = "linear-gradient(135deg, #74b9ff, #0984e3)";
+        } else if (condition.includes("snow")) {
+          bgColor = "linear-gradient(135deg, #dfe6e9, #ffffff)";
         } else {
-          displayWeatherData(data);
-          await fetchForecast(data.city);
-          showToast("Weather data fetched successfully!");
-          fireConfetti();
+          bgColor = "linear-gradient(135deg, #55efc4, #81ecec)";
         }
-      } catch (err) {
-        console.error("Request failed:", err);
-        displayWeatherError(err);
-      } finally {
-        setButtonLoading(false);
+        document.body.style.background = bgColor;
       }
-    }
 
-    // 4) Update background based on weather condition
-    function updateBackground(condition) {
-      let bgColor = "";
-      if (!condition) return;
-      condition = condition.toLowerCase();
-      if (condition.includes("clear")) {
-        bgColor = "linear-gradient(135deg, #81ecec, #74b9ff)";
-      } else if (condition.includes("cloud")) {
-        bgColor = "linear-gradient(135deg, #dfe6e9, #b2bec3)";
-      } else if (condition.includes("rain")) {
-        bgColor = "linear-gradient(135deg, #74b9ff, #0984e3)";
-      } else if (condition.includes("snow")) {
-        bgColor = "linear-gradient(135deg, #dfe6e9, #ffffff)";
-      } else {
-        bgColor = "linear-gradient(135deg, #55efc4, #81ecec)";
-      }
-      document.body.style.background = bgColor;
-    }
-
-    // 5) Toast notification using Bootstrap with error checking
-    function showToast(message) {
-      var toastBody = document.getElementById('toastBody');
-      if (toastBody) {
-        toastBody.textContent = message;
-      } else {
-        console.warn("Toast body element not found.");
-      }
-      var toastEl = document.getElementById('liveToast');
-      if (toastEl) {
-        var toast = new bootstrap.Toast(toastEl);
-        toast.show();
-      } else {
-        console.warn("Live toast element not found.");
-      }
-    }
-
-    // 6) Confetti function
-    function fireConfetti() {
-      const duration = 1.5 * 1000;
-      const end = Date.now() + duration;
-      (function frame() {
-        confetti({
-          particleCount: 5,
-          startVelocity: 30,
-          spread: 360,
-          origin: { x: Math.random(), y: Math.random() * 0.2 }
-        });
-        if (Date.now() < end) {
-          requestAnimationFrame(frame);
+      function showToast(message) {
+        var toastBody = document.getElementById('toastBody');
+        if (toastBody) {
+          toastBody.textContent = message;
+        } else {
+          console.warn("Toast body element not found.");
         }
-      })();
-    }
+        var toastEl = document.getElementById('liveToast');
+        if (toastEl) {
+          var toast = new bootstrap.Toast(toastEl);
+          toast.show();
+        } else {
+          console.warn("Live toast element not found.");
+        }
+      }
 
-    // 7) Set button to loading state
-    function setButtonLoading(isLoading) {
-      const btn = document.getElementById('getWeatherBtn');
-      if (!btn) {
-        console.warn("Button with id 'getWeatherBtn' not found.");
-        return;
+      function fireConfetti() {
+        const duration = 1.5 * 1000;
+        const end = Date.now() + duration;
+        (function frame() {
+          confetti({
+            particleCount: 5,
+            startVelocity: 30,
+            spread: 360,
+            origin: { x: Math.random(), y: Math.random() * 0.2 }
+          });
+          if (Date.now() < end) {
+            requestAnimationFrame(frame);
+          }
+        })();
       }
-      if (isLoading) {
-        btn.innerHTML = 'Loading...';
-        btn.disabled = true;
-      } else {
-        btn.innerHTML = 'Get Weather';
-        btn.disabled = false;
+
+      function setButtonLoading(isLoading) {
+        const btn = document.getElementById('getWeatherBtn');
+        if (!btn) {
+          console.warn("Button with id 'getWeatherBtn' not found.");
+          return;
+        }
+        if (isLoading) {
+          btn.innerHTML = 'Loading...';
+          btn.disabled = true;
+        } else {
+          btn.innerHTML = 'Get Weather';
+          btn.disabled = false;
+        }
       }
-    }
+
+      // 8) Define detectLocation and fetchWeatherByCoords functions
+      function detectLocation() {
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(function(position) {
+            fetchWeatherByCoords(position.coords.latitude, position.coords.longitude);
+          }, function(error) {
+            console.error("Geolocation error:", error);
+            showToast("Unable to retrieve location.");
+          });
+        } else {
+          showToast("Geolocation is not supported by your browser.");
+        }
+      }
+
+      async function fetchWeatherByCoords(lat, lon) {
+        clearWeatherDisplay();
+        setButtonLoading(true);
+        try {
+          const resp = await fetch(`/api/weather?lat=${lat}&lon=${lon}`);
+          const data = await resp.json();
+          if (data.error) {
+            displayWeatherError(data.error);
+          } else {
+            displayWeatherData(data);
+            await fetchForecast(data.city);
+            showToast("Weather data fetched successfully!");
+            fireConfetti();
+          }
+        } catch (err) {
+          console.error("Request failed:", err);
+          displayWeatherError(err);
+        } finally {
+          setButtonLoading(false);
+        }
+      }
+
+      // 9) Toggle Temperature Unit without Refresh (AJAX)
+      async function toggleUnit() {
+        try {
+          const response = await fetch('/toggle_unit', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({})
+          });
+          const data = await response.json();
+          tempUnit = data.temp_unit;
+          var toggleBtn = document.getElementById('toggleUnitBtn');
+          if (toggleBtn) {
+            toggleBtn.innerHTML = "Toggle °C/°F (Current: " + tempUnit + ")";
+          } else {
+            console.warn("Toggle button (id='toggleUnitBtn') not found in the DOM.");
+          }
+          // If a city is already entered, re-fetch weather data.
+          const city = document.getElementById('cityInput').value.trim();
+          if (city) {
+            fetchWeather();
+          }
+        } catch (err) {
+          console.error("Toggle unit failed:", err);
+          showToast("Error toggling unit");
+        }
+      }
+
+      // Expose functions to global scope for inline event handlers
+      window.sendChat = sendChat;
+      window.fetchWeather = fetchWeather;
+      window.detectLocation = detectLocation;
+      window.fetchWeatherByCoords = fetchWeatherByCoords;
+      window.toggleUnit = toggleUnit;
+    });
   </script>
 {% endblock %}

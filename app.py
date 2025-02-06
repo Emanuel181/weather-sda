@@ -7,12 +7,13 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
+# Replace with your actual OpenWeatherMap API key
 OPENWEATHER_API_KEY = "671fdaa031def78f82865cfb3174d352"
 
-# In-memory favorites list
+# In‑memory favorites list
 favorite_cities = []
 
-# Global temperature unit; "metric" for °C, "imperial" for °F
+# Global temperature unit; "metric" (°C) or "imperial" (°F)
 temp_unit = "metric"
 
 @app.route("/")
@@ -22,9 +23,8 @@ def index():
 @app.route("/api/weather")
 def api_weather():
     """
-    Returns weather info as JSON. Either accepts:
-      - a "city" parameter, or
-      - "lat" and "lon" parameters for coordinates.
+    Returns weather info as JSON. Accepts either a "city" parameter or
+    "lat" and "lon" parameters (for auto‑detect).
     """
     city = request.args.get("city")
     lat = request.args.get("lat")
@@ -62,7 +62,7 @@ def api_weather():
 @app.route("/api/forecast")
 def api_forecast():
     """
-    Returns a 5-day forecast as JSON for the given city or coordinates.
+    Returns a 5‑day forecast as JSON for a given city or coordinates.
     """
     city = request.args.get("city")
     lat = request.args.get("lat")
@@ -83,7 +83,8 @@ def api_forecast():
         if resp.status_code == 200:
             forecast_list = data.get("list", [])
             daily_data = []
-            for i in range(0, len(forecast_list), 8):  # roughly one reading per day
+            # Get roughly one reading per day (every 8 items)
+            for i in range(0, len(forecast_list), 8):
                 item = forecast_list[i]
                 dt_txt = item.get("dt_txt", "")
                 temp = item["main"]["temp"]
@@ -119,16 +120,20 @@ def show_favorites():
 def toggle_unit():
     global temp_unit
     temp_unit = "imperial" if temp_unit == "metric" else "metric"
+    # If AJAX request, return JSON; otherwise, redirect
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"temp_unit": temp_unit})
     return redirect(url_for("index"))
 
-# Socket.IO event handlers for chat (with a simple bot response)
+# Socket.IO event handlers for chat
 @socketio.on('chat_message')
 def handle_chat_message(data):
     msg_text = data.get('text', '')
     print("Received chat message:", msg_text)
     emit('chat_message', {'message': f"User {request.sid} says: {msg_text}"}, broadcast=True)
-    if msg_text.lower().startsWith("!bot"):
-        emit('chat_message', {'message': "Bot: Remember to dress warmly if it's cold!"}, broadcast=True)
+    # Simple bot response if message starts with "!bot"
+    if msg_text.toLowerCase().startsWith("!bot"):
+        emit('chat_message', {'message': "Bot: Remember to check the weather before heading out!"}, broadcast=True)
 
 @socketio.on('connect')
 def handle_connect():

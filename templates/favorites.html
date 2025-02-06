@@ -6,7 +6,6 @@
 
 {% block content %}
   <h2 class="mb-4">Your Favorite Cities</h2>
-
   {% if favorites %}
     <ul class="list-group animate__animated animate__fadeIn">
       {% for city in favorites %}
@@ -15,8 +14,7 @@
     </ul>
   {% else %}
     <p class="text-muted animate__animated animate__lightSpeedInLeft">
-      No favorite cities yet. Try searching on the
-      <a href="{{ url_for('index') }}">main page</a> and add some!
+      No favorite cities yet. Try searching on the <a href="{{ url_for('index') }}">main page</a> and add some!
     </p>
   {% endif %}
 {% endblock %}
