@@ -143,5 +143,33 @@ def handle_connect():
 def handle_disconnect():
     print(f"A client disconnected. SID was: {request.sid}")
 
+@app.route('/api/reverse_geocode', methods=['GET'])
+def reverse_geocode():
+    lat = request.args.get('lat')
+    lon = request.args.get('lon')
+    if not lat or not lon:
+        return jsonify({"error": "Missing latitude or longitude"}), 400
+
+    try:
+        # Call OpenWeatherMap Geocoding API
+        geocode_url = f"http://api.openweathermap.org/geo/1.0/reverse"
+        params = {
+            "lat": lat,
+            "lon": lon,
+            "appid": OPENWEATHER_API_KEY,
+            "limit": 1
+        }
+        resp = requests.get(geocode_url, params=params)
+        if resp.status_code != 200:
+            return jsonify({"error": "Failed to reverse geocode"}), 500
+        data = resp.json()
+        if len(data) == 0:
+            return jsonify({"error": "No location found"}), 404
+
+        city = data[0].get('name', "Unknown Location")
+        return jsonify({"city": city}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == "__main__":
     socketio.run(app, host="127.0.0.1", port=5000, debug=True)

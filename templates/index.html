@@ -78,27 +78,26 @@
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-  <script>
-    document.addEventListener("DOMContentLoaded", function() {
-      // Global variable for temperature unit, initially passed from backend
-      var tempUnit = "{{ temp_unit }}";
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    let tempUnit = "{{ temp_unit }}"; // Temperature unit passed from the backend
 
-      // 1) Socket.IO Setup
-      var socket = io();
-      socket.on('connect', function() {
-        console.log('Connected to server with SID:', socket.id);
-      });
-      socket.on('connect_error', function(error) {
-        console.error('Connection Error:', error);
-      });
-      socket.on('chat_message', function(data) {
-        var chatBox = document.getElementById('chatMessages');
-        var p = document.createElement('p');
-        p.className = "animate__animated animate__fadeInUp";
-        p.textContent = data.message;
-        chatBox.appendChild(p);
-        chatBox.scrollTop = chatBox.scrollHeight;
-      });
+  // 1) Socket.IO Setup
+  var socket = io();
+  socket.on('connect', function() {
+    console.log('Connected to server with SID:', socket.id);
+  });
+  socket.on('connect_error', function(error) {
+    console.error('Connection Error:', error);
+  });
+  socket.on('chat_message', function(data) {
+    var chatBox = document.getElementById('chatMessages');
+    var p = document.createElement('p');
+    p.className = "animate__animated animate__fadeInUp";
+    p.textContent = data.message;
+    chatBox.appendChild(p);
+    chatBox.scrollTop = chatBox.scrollHeight;
+  });
 
       // 2) Attach click event listeners to buttons
       document.getElementById('getWeatherBtn').addEventListener("click", fetchWeather);
@@ -113,246 +112,281 @@
       });
       document.getElementById('toggleUnitBtn').addEventListener("click", toggleUnit);
 
-      // 3) Weather + Forecast Functions
-      async function fetchWeather() {
-        const cityInput = document.getElementById('cityInput');
-        const city = cityInput.value.trim();
-        if (!city) return;
-        clearWeatherDisplay();
-        setButtonLoading(true);
-        try {
-          const resp = await fetch(`/api/weather?city=${encodeURIComponent(city)}`);
-          const data = await resp.json();
-          if (data.error) {
-            displayWeatherError(data.error);
-          } else {
-            displayWeatherData(data);
-            await fetchForecast(data.city);
-            showToast("Weather data fetched successfully!");
-            fireConfetti();
-          }
-        } catch (err) {
-          console.error("Request failed:", err);
-          displayWeatherError(err);
-        } finally {
-          setButtonLoading(false);
-        }
+
+    async function fetchWeather() {
+      const cityInput = document.getElementById("cityInput");
+      const city = cityInput.value.trim();
+      if (!city) {
+        showToast("Please enter a valid city.");
+        return;
       }
 
-      async function fetchForecast(city) {
-        const forecastSection = document.getElementById('forecastSection');
-        const chartCanvas = document.getElementById('forecastChart');
-        try {
-          const resp = await fetch(`/api/forecast?city=${encodeURIComponent(city)}`);
-          const data = await resp.json();
-          if (data.error || !data.forecast) return;
-          forecastSection.style.display = 'block';
-          const labels = data.forecast.map(item => item.date);
-          const temps = data.forecast.map(item => item.temp);
-          if (window.forecastChartInstance) {
-            window.forecastChartInstance.destroy();
-          }
-          window.forecastChartInstance = new Chart(chartCanvas, {
-            type: 'line',
-            data: {
-              labels: labels,
-              datasets: [{
-                label: 'Temperature (' + (tempUnit === "imperial" ? "°F" : "°C") + ')',
-                data: temps,
-                borderColor: 'rgba(54, 162, 235, 1)',
-                backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                fill: true,
-                tension: 0.3
-              }]
-            },
-            options: {
-              responsive: false,
-              maintainAspectRatio: false,
-              scales: {
-                y: { beginAtZero: false }
-              }
+      clearWeatherDisplay();
+      setButtonLoading(true);
+
+      try {
+        const resp = await fetch(`/api/weather?city=${encodeURIComponent(city)}`);
+        const data = await resp.json();
+        if (data.error) {
+          displayWeatherError(data.error);
+        } else {
+          displayWeatherData(data);
+          await fetchForecast(data.city);
+          showToast("Weather data fetched successfully!");
+          fireConfetti();
+        }
+      } catch (err) {
+        console.error("Request failed:", err);
+        displayWeatherError(err.message);
+      } finally {
+        setButtonLoading(false);
+      }
+    }
+
+    async function fetchForecast(city) {
+      if (!city || city === "Your Location") {
+        console.error("Invalid city for forecast request");
+        return;
+      }
+      try {
+        const resp = await fetch(`/api/forecast?city=${encodeURIComponent(city)}`);
+        const data = await resp.json();
+        if (data.error || !data.forecast) return;
+
+        displayForecast(data.forecast);
+      } catch (error) {
+        console.error("Forecast fetch failed:", error);
+      }
+    }
+
+    async function detectLocation() {
+      if (!navigator.geolocation) {
+        showToast("Geolocation is not supported by your browser.");
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        async function (position) {
+          const { latitude: lat, longitude: lon } = position.coords;
+
+          try {
+            const geoResp = await fetch(`/api/reverse_geocode?lat=${lat}&lon=${lon}`);
+            const geoData = await geoResp.json();
+
+            if (geoData.error) {
+              showToast("Could not detect location.");
+              return;
             }
-          });
-        } catch (err) {
-          console.error("Forecast fetch failed:", err);
-        }
-      }
 
-      function clearWeatherDisplay() {
-        const weatherResult = document.getElementById('weatherResult');
-        weatherResult.classList.add('d-none');
-        weatherResult.innerHTML = '';
-        const weatherIcon = document.getElementById('weatherIcon');
-        if (weatherIcon) weatherIcon.style.display = 'none';
-        document.getElementById('favoritesForm').style.display = 'none';
-      }
+            const city = geoData.city;
+            if (!city) {
+              showToast("Unable to detect a valid location.");
+              return;
+            }
 
-      function displayWeatherError(error) {
-        const weatherResult = document.getElementById('weatherResult');
-        weatherResult.textContent = "Error: " + error;
-        weatherResult.className = "alert alert-danger animate__animated animate__fadeIn";
-        weatherResult.classList.remove('d-none');
-      }
+            document.getElementById("cityInput").value = city; // Update input with the actual city name
 
-      function displayWeatherData(data) {
-        const weatherResult = document.getElementById('weatherResult');
-        var weatherText = document.getElementById('weatherText');
-        if (!weatherText) {
-          console.warn("Element with id 'weatherText' not found. Creating it.");
-          weatherText = document.createElement('span');
-          weatherText.id = 'weatherText';
-          weatherResult.appendChild(weatherText);
-        }
-        weatherText.innerHTML = `<strong>Weather for ${data.city}:</strong> ${data.weather_info}`;
-        weatherResult.className = "alert alert-success animate__animated animate__fadeIn";
-        weatherResult.classList.remove('d-none');
-        const weatherIcon = document.getElementById('weatherIcon');
-        if (data.icon && weatherIcon) {
-          weatherIcon.src = "https://openweathermap.org/img/wn/" + data.icon + "@2x.png";
-          weatherIcon.style.display = 'inline';
-        }
-        document.getElementById('favoritesForm').style.display = 'block';
-        document.getElementById('favoriteCityInput').value = data.city;
-        updateBackground(data.weather_main);
-      }
-
-      function updateBackground(condition) {
-        let bgColor = "";
-        if (!condition) return;
-        condition = condition.toLowerCase();
-        if (condition.includes("clear")) {
-          bgColor = "linear-gradient(135deg, #81ecec, #74b9ff)";
-        } else if (condition.includes("cloud")) {
-          bgColor = "linear-gradient(135deg, #dfe6e9, #b2bec3)";
-        } else if (condition.includes("rain")) {
-          bgColor = "linear-gradient(135deg, #74b9ff, #0984e3)";
-        } else if (condition.includes("snow")) {
-          bgColor = "linear-gradient(135deg, #dfe6e9, #ffffff)";
-        } else {
-          bgColor = "linear-gradient(135deg, #55efc4, #81ecec)";
-        }
-        document.body.style.background = bgColor;
-      }
-
-      function showToast(message) {
-        var toastBody = document.getElementById('toastBody');
-        if (toastBody) {
-          toastBody.textContent = message;
-        } else {
-          console.warn("Toast body element not found.");
-        }
-        var toastEl = document.getElementById('liveToast');
-        if (toastEl) {
-          var toast = new bootstrap.Toast(toastEl);
-          toast.show();
-        } else {
-          console.warn("Live toast element not found.");
-        }
-      }
-
-      function fireConfetti() {
-        const duration = 1.5 * 1000;
-        const end = Date.now() + duration;
-        (function frame() {
-          confetti({
-            particleCount: 5,
-            startVelocity: 30,
-            spread: 360,
-            origin: { x: Math.random(), y: Math.random() * 0.2 }
-          });
-          if (Date.now() < end) {
-            requestAnimationFrame(frame);
-          }
-        })();
-      }
-
-      function setButtonLoading(isLoading) {
-        const btn = document.getElementById('getWeatherBtn');
-        if (!btn) {
-          console.warn("Button with id 'getWeatherBtn' not found.");
-          return;
-        }
-        if (isLoading) {
-          btn.innerHTML = 'Loading...';
-          btn.disabled = true;
-        } else {
-          btn.innerHTML = 'Get Weather';
-          btn.disabled = false;
-        }
-      }
-
-      // 8) Define detectLocation and fetchWeatherByCoords functions
-      function detectLocation() {
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(function(position) {
-            fetchWeatherByCoords(position.coords.latitude, position.coords.longitude);
-          }, function(error) {
-            console.error("Geolocation error:", error);
+            // Fetch weather and forecast by coordinates
+            await fetchWeatherByCoords(lat, lon, city);
+          } catch (error) {
+            console.error("Reverse geocoding failed:", error);
             showToast("Unable to retrieve location.");
-          });
+          }
+        },
+        (error) => {
+          console.error("Geolocation error:", error);
+          showToast("Unable to retrieve location.");
+        }
+      );
+    }
+
+    async function toggleUnit() {
+      try {
+        const response = await fetch("/toggle_unit", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+        });
+        const data = await response.json();
+        tempUnit = data.temp_unit;
+
+        const toggleBtn = document.getElementById("toggleUnitBtn");
+        if (toggleBtn) {
+          toggleBtn.innerHTML = `Toggle °C/°F (Current: ${tempUnit})`;
         } else {
-          showToast("Geolocation is not supported by your browser.");
+          console.warn("Toggle button not found in the DOM.");
         }
+
+        // Refresh weather data for the currently entered city
+        const city = document.getElementById("cityInput").value.trim();
+        if (city) {
+          fetchWeather();
+        }
+      } catch (error) {
+        console.error("Toggle unit failed:", error);
+        showToast("Error toggling unit");
+      }
+    }
+
+    async function fetchWeatherByCoords(lat, lon, city) {
+      clearWeatherDisplay();
+      setButtonLoading(true);
+
+      try {
+        const resp = await fetch(`/api/weather?lat=${lat}&lon=${lon}`);
+        const data = await resp.json();
+
+        if (data.error) {
+          displayWeatherError(data.error);
+        } else {
+          displayWeatherData(data);
+          await fetchForecast(city); // Use the detected city for the forecast
+          showToast("Weather data fetched successfully!");
+          fireConfetti();
+        }
+      } catch (error) {
+        console.error("Request failed:", error);
+        displayWeatherError(error.message);
+      } finally {
+        setButtonLoading(false);
+      }
+    }
+
+    // Utility Functions
+    function clearWeatherDisplay() {
+      document.getElementById("weatherResult").classList.add("d-none");
+      document.getElementById("forecastSection").style.display = "none";
+    }
+
+    function displayWeatherData(data) {
+      const weatherResult = document.getElementById("weatherResult");
+      const weatherText = document.getElementById("weatherText");
+      const weatherIcon = document.getElementById("weatherIcon");
+
+      if (weatherText) {
+        weatherText.innerHTML = `<strong>Weather for ${data.city}:</strong> ${data.weather_info}`;
       }
 
-      async function fetchWeatherByCoords(lat, lon) {
-        clearWeatherDisplay();
-        setButtonLoading(true);
-        try {
-          const resp = await fetch(`/api/weather?lat=${lat}&lon=${lon}`);
-          const data = await resp.json();
-          if (data.error) {
-            displayWeatherError(data.error);
-          } else {
-            displayWeatherData(data);
-            await fetchForecast(data.city);
-            showToast("Weather data fetched successfully!");
-            fireConfetti();
-          }
-        } catch (err) {
-          console.error("Request failed:", err);
-          displayWeatherError(err);
-        } finally {
-          setButtonLoading(false);
-        }
+      if (data.icon && weatherIcon) {
+        weatherIcon.src = `https://openweathermap.org/img/wn/${data.icon}@2x.png`;
+        weatherIcon.style.display = "inline";
       }
 
-      // 9) Toggle Temperature Unit without Refresh (AJAX)
-      async function toggleUnit() {
-        try {
-          const response = await fetch('/toggle_unit', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest'
+      weatherResult.className = "alert alert-success animate__animated animate__fadeIn";
+      weatherResult.classList.remove("d-none");
+
+      const favoritesForm = document.getElementById("favoritesForm");
+      if (favoritesForm) {
+        favoritesForm.style.display = "block";
+        document.getElementById("favoriteCityInput").value = data.city;
+      }
+
+      updateBackground(data.weather_main);
+    }
+
+    function displayForecast(forecast) {
+      const forecastSection = document.getElementById("forecastSection");
+      const chartCanvas = document.getElementById("forecastChart");
+      const labels = forecast.map((item) => item.date);
+      const temps = forecast.map((item) => item.temp);
+
+      if (window.forecastChartInstance) {
+        window.forecastChartInstance.destroy();
+      }
+
+      window.forecastChartInstance = new Chart(chartCanvas, {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: `Temperature (${tempUnit === "imperial" ? "°F" : "°C"})`,
+              data: temps,
+              borderColor: "rgba(54, 162, 235, 1)",
+              backgroundColor: "rgba(54, 162, 235, 0.2)",
+              fill: true,
             },
-            body: JSON.stringify({})
-          });
-          const data = await response.json();
-          tempUnit = data.temp_unit;
-          var toggleBtn = document.getElementById('toggleUnitBtn');
-          if (toggleBtn) {
-            toggleBtn.innerHTML = "Toggle °C/°F (Current: " + tempUnit + ")";
-          } else {
-            console.warn("Toggle button (id='toggleUnitBtn') not found in the DOM.");
-          }
-          // If a city is already entered, re-fetch weather data.
-          const city = document.getElementById('cityInput').value.trim();
-          if (city) {
-            fetchWeather();
-          }
-        } catch (err) {
-          console.error("Toggle unit failed:", err);
-          showToast("Error toggling unit");
-        }
-      }
+          ],
+        },
+        options: {
+          responsive: false,
+          maintainAspectRatio: false,
+        },
+      });
 
-      // Expose functions to global scope for inline event handlers
-      window.sendChat = sendChat;
-      window.fetchWeather = fetchWeather;
-      window.detectLocation = detectLocation;
-      window.fetchWeatherByCoords = fetchWeatherByCoords;
-      window.toggleUnit = toggleUnit;
+      forecastSection.style.display = "block";
+    }
+
+    function displayWeatherError(message) {
+      const weatherResult = document.getElementById("weatherResult");
+      weatherResult.textContent = `Error: ${message}`;
+      weatherResult.classList.remove("d-none");
+    }
+
+    function showToast(message) {
+      const toastBody = document.getElementById("toastBody");
+      const toastEl = document.getElementById("liveToast");
+
+      if (toastBody) toastBody.textContent = message;
+      if (toastEl) new bootstrap.Toast(toastEl).show();
+    }
+
+    function setButtonLoading(isLoading) {
+      const btn = document.getElementById("getWeatherBtn");
+
+      if (!btn) return;
+      btn.innerHTML = isLoading ? "Loading..." : "Get Weather";
+      btn.disabled = isLoading;
+    }
+
+    function appendChatMessage(message) {
+      const chatBox = document.getElementById("chatMessages");
+      const p = document.createElement("p");
+      p.className = "animate__animated animate__fadeInUp";
+      p.textContent = message;
+      chatBox.appendChild(p);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function updateBackground(condition) {
+      let bgColor = "";
+      if (!condition) return;
+      condition = condition.toLowerCase();
+      if (condition.includes("clear")) {
+        bgColor = "linear-gradient(135deg, #81ecec, #74b9ff)";
+      } else if (condition.includes("cloud")) {
+        bgColor = "linear-gradient(135deg, #dfe6e9, #b2bec3)";
+      } else if (condition.includes("rain")) {
+        bgColor = "linear-gradient(135deg, #74b9ff, #0984e3)";
+      } else if (condition.includes("snow")) {
+        bgColor = "linear-gradient(135deg, #dfe6e9, #ffffff)";
+      } else {
+        bgColor = "linear-gradient(135deg, #55efc4, #81ecec)";
+      }
+      document.body.style.background = bgColor;
+    }
+
+    function fireConfetti() {
+  const duration = 1.5 * 1000; // Duration for the confetti effect in milliseconds
+  const end = Date.now() + duration;
+
+  (function frame() {
+    confetti({
+      particleCount: 5, // Number of particles per frame
+      startVelocity: 30, // Initial velocity of particles
+      spread: 360, // Spread of particles in degrees
+      origin: { x: Math.random(), y: Math.random() * 0.2 }, // Origin position of the confetti
     });
-  </script>
+    if (Date.now() < end) {
+      requestAnimationFrame(frame); // Continue the animation until the duration ends
+    }
+  })();
+}
+
+  });
+</script>
+
+
 {% endblock %}
