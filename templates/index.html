@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}
+  Weather + Chat + Forecast
+{% endblock %}
+
+{% block content %}
+  <h1 class="mb-4">Check the Weather (No Refresh)</h1>
+
+  <div class="input-group mb-3" style="max-width: 400px;">
+    <input type="text" id="cityInput"
+           class="form-control animate__animated animate__bounceInLeft"
+           placeholder="Enter city name" />
+    <button id="getWeatherBtn" class="btn btn-primary animate__animated animate__bounceInRight"
+            onclick="fetchWeather()">
+      Get Weather
+    </button>
+  </div>
+
+  <!-- Display weather result or errors here -->
+  <div id="weatherResult" class="alert d-none" style="min-height: 50px;"></div>
+
+  <!-- Add to favorites button appears dynamically if weather is found -->
+  <form method="POST"
+        action="{{ url_for('add_favorite') }}"
+        style="display:none;"
+        id="favoritesForm"
+        class="animate__animated animate__zoomIn">
+    <!-- Hidden input will store the city name -->
+    <input type="hidden" name="favorite_city" id="favoriteCityInput" />
+    <button type="submit" class="btn btn-warning">Add to Favorites</button>
+  </form>
+
+  <hr />
+
+  <!-- 5-DAY FORECAST CHART -->
+  <!-- The forecast section container is given a fixed width and height -->
+  <div id="forecastSection" style="display:none; margin-bottom:20px; width: 400px; height: 220px;">
+    <h3 class="mb-3">5-Day Forecast</h3>
+    <!-- The canvas is fixed at 400x200 pixels -->
+    <canvas id="forecastChart" width="400" height="200" style="width: 400px; height:200px;"></canvas>
+  </div>
+
+  <hr/>
+
+  <!-- REAL-TIME CHAT SECTION -->
+  <div class="chat-section">
+    <h2 class="mb-3">Simple Chat</h2>
+    <!-- Chat message display area -->
+    <div id="chatMessages"
+         class="chat-messages mb-3 p-2"
+         style="border: 1px solid #ddd; max-height: 200px; overflow-y: auto; border-radius: 5px;">
+    </div>
+    <!-- Input field + button -->
+    <div class="input-group" style="max-width: 400px;">
+      <input type="text" id="chatInput" class="form-control"
+             placeholder="Enter chat message..." />
+      <button class="btn btn-success" onclick="sendChat()">Send</button>
+    </div>
+  </div>
+
+  <!-- Socket.IO client + chart.js + custom script -->
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <script>
+    // 1) Socket.IO setup
+    var socket = io();
+    socket.on('connect', function() {
+      console.log('Connected to server with SID:', socket.id);
+    });
+    socket.on('connect_error', function(error) {
+      console.error('Connection Error:', error);
+    });
+    socket.on('chat_message', function(data) {
+      var chatBox = document.getElementById('chatMessages');
+      var p = document.createElement('p');
+      p.className = "animate__animated animate__fadeInUp";
+      p.textContent = data.message;
+      chatBox.appendChild(p);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    });
+    function sendChat() {
+      var input = document.getElementById('chatInput');
+      var msg = input.value.trim();
+      if (msg) {
+        socket.emit('chat_message', { text: msg });
+        input.value = '';
+      }
+    }
+
+    // 2) Weather + Forecast
+    async function fetchWeather() {
+      const cityInput = document.getElementById('cityInput');
+      const city = cityInput.value.trim();
+      if (!city) return;
+
+      const resultDiv = document.getElementById('weatherResult');
+      const favoritesForm = document.getElementById('favoritesForm');
+      const favoriteCityInput = document.getElementById('favoriteCityInput');
+      const forecastSection = document.getElementById('forecastSection');
+      const getWeatherBtn = document.getElementById('getWeatherBtn');
+
+      // Clear previous data
+      resultDiv.classList.add('d-none');
+      resultDiv.className = 'alert d-none';
+      resultDiv.textContent = '';
+      favoritesForm.style.display = 'none';
+      forecastSection.style.display = 'none';
+
+      // Set button to loading state
+      getWeatherBtn.innerHTML = 'Loading...';
+      getWeatherBtn.disabled = true;
+
+      try {
+        // 2a) Fetch single-day weather
+        const resp = await fetch(`/api/weather?city=${encodeURIComponent(city)}`);
+        const data = await resp.json();
+
+        if (data.error) {
+          // Show error
+          resultDiv.textContent = "Error: " + data.error;
+          resultDiv.className = "alert alert-danger animate__animated animate__fadeIn";
+          resultDiv.classList.remove('d-none');
+        } else {
+          // Show success message
+          resultDiv.textContent = `Weather for ${data.city}: ${data.weather_info}`;
+          resultDiv.className = "alert alert-success animate__animated animate__fadeIn";
+          resultDiv.classList.remove('d-none');
+
+          // Reveal "Add to Favorites" button
+          favoritesForm.style.display = 'block';
+          favoriteCityInput.value = data.city;
+
+          // Confetti effect
+          fireConfetti();
+
+          // 2b) Fetch 5-day forecast
+          await fetchForecast(data.city);
+        }
+      } catch (err) {
+        console.error("Request failed:", err);
+        resultDiv.textContent = "An error occurred: " + err;
+        resultDiv.className = "alert alert-danger animate__animated animate__fadeIn";
+        resultDiv.classList.remove('d-none');
+      } finally {
+        // Reset button state regardless of success or error
+        getWeatherBtn.innerHTML = 'Get Weather';
+        getWeatherBtn.disabled = false;
+      }
+    }
+
+    async function fetchForecast(city) {
+      const forecastSection = document.getElementById('forecastSection');
+      const chartCanvas = document.getElementById('forecastChart');
+
+      try {
+        const resp = await fetch(`/api/forecast?city=${encodeURIComponent(city)}`);
+        const data = await resp.json();
+
+        if (data.error) {
+          console.error("Forecast Error:", data.error);
+          return;
+        }
+        if (!data.forecast || !data.forecast.length) return;
+
+        forecastSection.style.display = 'block';
+
+        const labels = data.forecast.map(item => item.date);
+        const temps = data.forecast.map(item => item.temp);
+
+        // If we already have a chart instance, destroy it before re-creating
+        if (window.forecastChartInstance) {
+          window.forecastChartInstance.destroy();
+        }
+
+        // Create a new chart with fixed size by disabling responsiveness
+        window.forecastChartInstance = new Chart(chartCanvas, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Temperature (°C)',
+              data: temps,
+              borderColor: 'rgba(54, 162, 235, 1)',
+              backgroundColor: 'rgba(54, 162, 235, 0.2)',
+              fill: true,
+              tension: 0.3
+            }]
+          },
+          options: {
+            responsive: false, // Fixed size chart
+            maintainAspectRatio: false,
+            scales: {
+              y: { beginAtZero: false }
+            }
+          }
+        });
+      } catch (err) {
+        console.error("Forecast fetch failed:", err);
+      }
+    }
+
+    // 3) Confetti function
+    function fireConfetti() {
+      const duration = 1.5 * 1000; // 1.5 seconds
+      const end = Date.now() + duration;
+      (function frame() {
+        confetti({
+          particleCount: 5,
+          startVelocity: 30,
+          spread: 360,
+          origin: { x: Math.random(), y: Math.random() * 0.2 }
+        });
+        if (Date.now() < end) {
+          requestAnimationFrame(frame);
+        }
+      })();
+    }
+  </script>
+{% endblock %}

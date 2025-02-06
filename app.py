@@ -1,167 +1,127 @@
 import os
 import requests
-
-from flask import Flask, request, render_template_string
+from flask import Flask, request, render_template, jsonify, redirect, url_for
 from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'secret!'  # Needed by Socket.IO for session encryption
+app.config['SECRET_KEY'] = 'secret!'  # Needed by Socket.IO
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Insert your OpenWeatherMap API key here
 OPENWEATHER_API_KEY = "671fdaa031def78f82865cfb3174d352"
 
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Weather + WebSocket</title>
-    <style>
-       body { font-family: Arial, sans-serif; margin: 30px; }
-       .container { max-width: 400px; margin: auto; }
-       input { width: 80%; padding: 8px; margin-right: 5px; }
-       button { padding: 8px; }
-       .result { margin-top: 20px; }
-       .chat-section {
-         margin-top: 40px;
-         background-color: #f5f5f5;
-         padding: 15px;
-         border-radius: 5px;
-       }
-       .chat-messages {
-         margin-bottom: 10px;
-         max-height: 200px;
-         overflow-y: auto;
-         border: 1px solid #ddd;
-         padding: 10px;
-         background-color: #fff;
-         border-radius: 5px;
-       }
-    </style>
-</head>
-<body>
-  <div class="container">
-    <h1>Check the Weather</h1>
-    <form method="GET" action="/">
-      <input type="text" name="city" placeholder="Enter city name" />
-      <button type="submit">Get Weather</button>
-    </form>
-    {% if weather_info %}
-      <div class="result">
-        <h2>Weather for {{ city }}</h2>
-        <p>{{ weather_info }}</p>
-      </div>
-    {% endif %}
+# In-memory list of favorite cities for demonstration
+favorite_cities = []
 
-    <!-- Real-time Chat Section -->
-    <div class="chat-section">
-      <h2>Simple Chat</h2>
-      <div class="chat-messages" id="chatMessages"></div>
-      <input type="text" id="chatInput" placeholder="Enter chat message..." />
-      <button onclick="sendChat()">Send</button>
-    </div>
-  </div>
-
-  <!-- 1) Load the Socket.IO client library from CDN -->
-  <script 
-      src="https://cdn.socket.io/4.5.4/socket.io.min.js">
-  </script>
-
-  <!-- 2) Now your custom script that references `io()` -->
-  <script>
-    // Connect to the server's SocketIO
-    var socket = io();
-
-    // Debugging: Log when the socket connects
-    socket.on('connect', function() {
-        console.log('Connected to server with SID:', socket.id);
-    });
-
-    // Debugging: Log if there's a connection error
-    socket.on('connect_error', function(error) {
-        console.error('Connection Error:', error);
-    });
-
-    // Listen for 'chat_message' events from the server
-    socket.on('chat_message', function(data) {
-        // data is an object: {message: "Something..."}
-        var chatBox = document.getElementById('chatMessages');
-        var p = document.createElement('p');
-        p.textContent = data.message; 
-        chatBox.appendChild(p);
-
-        // auto-scroll to bottom
-        chatBox.scrollTop = chatBox.scrollHeight;
-    });
-
-    // Send chat message to the server
-    function sendChat() {
-        var input = document.getElementById('chatInput');
-        var msg = input.value.trim();
-        if (msg) {
-            // Emit a 'chat_message' event with 'msg' as payload
-            socket.emit('chat_message', { text: msg });
-            input.value = '';
-        }
-    }
-  </script>
-
-</body>
-</html>
-"""
-
-@app.route("/", methods=["GET"])
+@app.route("/")
 def index():
+    """ Renders the main page: Weather + Chat + 5-Day forecast chart. """
+    return render_template("index.html")
+
+@app.route("/api/weather")
+def api_weather():
     """
-    Renders the page and, if a city is provided, fetches
-    the weather from OpenWeatherMap.
+    Returns weather info as JSON for the given city (?city=...).
     """
     city = request.args.get("city")
-    weather_info = None
+    if not city:
+        return jsonify({"error": "No city provided"}), 400
 
-    if city:
-        base_url = "https://api.openweathermap.org/data/2.5/weather"
-        params = {
-            "q": city,
-            "appid": OPENWEATHER_API_KEY,
-            "units": "metric"
-        }
-        try:
-            resp = requests.get(base_url, params=params)
-            data = resp.json()
+    base_url = "https://api.openweathermap.org/data/2.5/weather"
+    params = {
+        "q": city,
+        "appid": OPENWEATHER_API_KEY,
+        "units": "metric"
+    }
+    try:
+        resp = requests.get(base_url, params=params)
+        data = resp.json()
+        if resp.status_code == 200:
+            main = data['weather'][0]['main']
+            description = data['weather'][0]['description']
+            temp = data['main']['temp']
+            return jsonify({
+                "city": city,
+                "weather_info": f"{main} ({description}), {temp} °C"
+            })
+        else:
+            message = data.get("message", "Something went wrong.")
+            return jsonify({"error": message}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-            if resp.status_code == 200:
-                main = data['weather'][0]['main']
-                description = data['weather'][0]['description']
-                temp = data['main']['temp']
-                weather_info = f"{main} ({description}), {temp} °C"
-            else:
-                message = data.get("message", "Something went wrong.")
-                weather_info = f"Error: {message}"
-        except Exception as e:
-            weather_info = f"Error: {str(e)}"
+@app.route("/api/forecast")
+def api_forecast():
+    """
+    Returns a 5-day forecast for a city (?city=...).
+    We'll parse the data to create something Chart.js can use.
+    """
+    city = request.args.get("city")
+    if not city:
+        return jsonify({"error": "No city provided"}), 400
 
-    return render_template_string(HTML_TEMPLATE, city=city, weather_info=weather_info)
+    base_url = "https://api.openweathermap.org/data/2.5/forecast"
+    params = {
+        "q": city,
+        "appid": OPENWEATHER_API_KEY,
+        "units": "metric"
+    }
+    try:
+        resp = requests.get(base_url, params=params)
+        data = resp.json()
+        if resp.status_code == 200:
+            # parse forecast data
+            forecast_list = data.get("list", [])
 
+            daily_data = []
+            # every 8 items ~ 1 day
+            for i in range(0, len(forecast_list), 8):
+                item = forecast_list[i]
+                dt_txt = item.get("dt_txt", "")
+                temp = item["main"]["temp"]
+                day_label = dt_txt.split(" ")[0]  # "YYYY-MM-DD"
+                daily_data.append({
+                    "date": day_label,
+                    "temp": temp
+                })
+                if len(daily_data) >= 5:
+                    break
+
+            return jsonify({
+                "city": city,
+                "forecast": daily_data
+            })
+        else:
+            message = data.get("message", "Something went wrong.")
+            return jsonify({"error": message}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/add_favorite", methods=["POST"])
+def add_favorite():
+    city = request.form.get("favorite_city")
+    if city and city not in favorite_cities:
+        favorite_cities.append(city)
+    return redirect(url_for("show_favorites"))
+
+@app.route("/favorites")
+def show_favorites():
+    return render_template("favorites.html", favorites=favorite_cities)
+
+# ---------------------------
+# Socket.IO Event Handlers
+# ---------------------------
 @socketio.on('connect')
 def handle_connect():
-    print("A client connected with SID:", request.sid)
+    print(f"A client connected with SID: {request.sid}")
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    print("A client disconnected. SID was:", request.sid)
+    print(f"A client disconnected. SID was: {request.sid}")
 
 @socketio.on('chat_message')
 def handle_chat_message(data):
-    """
-    When a client sends a 'chat_message' event, we broadcast
-    it to all clients (including the sender).
-    'data' is expected to be a dictionary, e.g., {'text': "hello!"}
-    """
     msg_text = data.get('text', '')
     print("Received chat message:", msg_text)
-
-    # Emit the event 'chat_message' to ALL clients in the default namespace
     emit(
         'chat_message',
         {'message': f"User {request.sid} says: {msg_text}"},
@@ -169,5 +129,4 @@ def handle_chat_message(data):
     )
 
 if __name__ == "__main__":
-    # Run with socketio.run for WebSockets support
     socketio.run(app, host="127.0.0.1", port=5000, debug=True)
