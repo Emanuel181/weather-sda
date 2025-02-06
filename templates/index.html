@@ -7,51 +7,60 @@
 {% block content %}
   <h1 class="mb-4">Check the Weather (No Refresh)</h1>
 
-  <div class="input-group mb-3" style="max-width: 400px;">
+  <!-- Input group with manual entry and detect location -->
+  <div class="d-flex mb-3" style="max-width: 400px;">
     <input type="text" id="cityInput"
            class="form-control animate__animated animate__bounceInLeft"
            placeholder="Enter city name" />
-    <button id="getWeatherBtn" class="btn btn-primary animate__animated animate__bounceInRight"
+    <button id="getWeatherBtn" class="btn btn-primary animate__animated animate__bounceInRight ms-2"
             onclick="fetchWeather()">
       Get Weather
     </button>
+    <button class="btn btn-secondary ms-2" onclick="detectLocation()">
+      Detect Location
+    </button>
   </div>
 
-  <!-- Display weather result or errors here -->
-  <div id="weatherResult" class="alert d-none" style="min-height: 50px;"></div>
+  <!-- Temperature unit toggle -->
+  <form action="{{ url_for('toggle_unit') }}" method="POST" class="mb-3" style="max-width: 400px;">
+    <button type="submit" class="btn btn-outline-info">
+      Toggle °C/°F (Current: {{ temp_unit }})
+    </button>
+  </form>
 
-  <!-- Add to favorites button appears dynamically if weather is found -->
+  <!-- Weather result with icon -->
+  <div id="weatherResult" class="alert d-none" style="min-height: 50px;">
+    <img id="weatherIcon" src="" alt="Weather Icon" style="display: none; vertical-align: middle; margin-right: 10px;">
+    <span id="weatherText"></span>
+  </div>
+
+  <!-- Add to favorites form -->
   <form method="POST"
         action="{{ url_for('add_favorite') }}"
         style="display:none;"
         id="favoritesForm"
         class="animate__animated animate__zoomIn">
-    <!-- Hidden input will store the city name -->
     <input type="hidden" name="favorite_city" id="favoriteCityInput" />
     <button type="submit" class="btn btn-warning">Add to Favorites</button>
   </form>
 
   <hr />
 
-  <!-- 5-DAY FORECAST CHART -->
-  <!-- The forecast section container is given a fixed width and height -->
+  <!-- 5-Day Forecast Chart (fixed width/height) -->
   <div id="forecastSection" style="display:none; margin-bottom:20px; width: 400px; height: 220px;">
     <h3 class="mb-3">5-Day Forecast</h3>
-    <!-- The canvas is fixed at 400x200 pixels -->
     <canvas id="forecastChart" width="400" height="200" style="width: 400px; height:200px;"></canvas>
   </div>
 
   <hr/>
 
-  <!-- REAL-TIME CHAT SECTION -->
+  <!-- Real-Time Chat Section -->
   <div class="chat-section">
     <h2 class="mb-3">Simple Chat</h2>
-    <!-- Chat message display area -->
     <div id="chatMessages"
          class="chat-messages mb-3 p-2"
          style="border: 1px solid #ddd; max-height: 200px; overflow-y: auto; border-radius: 5px;">
     </div>
-    <!-- Input field + button -->
     <div class="input-group" style="max-width: 400px;">
       <input type="text" id="chatInput" class="form-control"
              placeholder="Enter chat message..." />
@@ -59,12 +68,27 @@
     </div>
   </div>
 
-  <!-- Socket.IO client + chart.js + custom script -->
+  <!-- Toast Notification Markup -->
+  <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1055">
+    <div id="liveToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="toast-header">
+        <strong class="me-auto">Notification</strong>
+        <small>Now</small>
+        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+      <div class="toast-body" id="toastBody"></div>
+    </div>
+  </div>
+
+  <!-- Socket.IO client, Chart.js, and custom scripts -->
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <script>
-    // 1) Socket.IO setup
+    // Global variable for temperature unit passed from backend
+    var tempUnit = "{{ temp_unit }}";
+
+    // 1) Socket.IO Setup
     var socket = io();
     socket.on('connect', function() {
       console.log('Connected to server with SID:', socket.id);
@@ -89,98 +113,51 @@
       }
     }
 
-    // 2) Weather + Forecast
+    // 2) Weather + Forecast Functions
     async function fetchWeather() {
       const cityInput = document.getElementById('cityInput');
       const city = cityInput.value.trim();
       if (!city) return;
-
-      const resultDiv = document.getElementById('weatherResult');
-      const favoritesForm = document.getElementById('favoritesForm');
-      const favoriteCityInput = document.getElementById('favoriteCityInput');
-      const forecastSection = document.getElementById('forecastSection');
-      const getWeatherBtn = document.getElementById('getWeatherBtn');
-
-      // Clear previous data
-      resultDiv.classList.add('d-none');
-      resultDiv.className = 'alert d-none';
-      resultDiv.textContent = '';
-      favoritesForm.style.display = 'none';
-      forecastSection.style.display = 'none';
-
-      // Set button to loading state
-      getWeatherBtn.innerHTML = 'Loading...';
-      getWeatherBtn.disabled = true;
-
+      clearWeatherDisplay();
+      setButtonLoading(true);
       try {
-        // 2a) Fetch single-day weather
         const resp = await fetch(`/api/weather?city=${encodeURIComponent(city)}`);
         const data = await resp.json();
-
         if (data.error) {
-          // Show error
-          resultDiv.textContent = "Error: " + data.error;
-          resultDiv.className = "alert alert-danger animate__animated animate__fadeIn";
-          resultDiv.classList.remove('d-none');
+          displayWeatherError(data.error);
         } else {
-          // Show success message
-          resultDiv.textContent = `Weather for ${data.city}: ${data.weather_info}`;
-          resultDiv.className = "alert alert-success animate__animated animate__fadeIn";
-          resultDiv.classList.remove('d-none');
-
-          // Reveal "Add to Favorites" button
-          favoritesForm.style.display = 'block';
-          favoriteCityInput.value = data.city;
-
-          // Confetti effect
-          fireConfetti();
-
-          // 2b) Fetch 5-day forecast
+          displayWeatherData(data);
           await fetchForecast(data.city);
+          showToast("Weather data fetched successfully!");
+          fireConfetti();
         }
       } catch (err) {
         console.error("Request failed:", err);
-        resultDiv.textContent = "An error occurred: " + err;
-        resultDiv.className = "alert alert-danger animate__animated animate__fadeIn";
-        resultDiv.classList.remove('d-none');
+        displayWeatherError(err);
       } finally {
-        // Reset button state regardless of success or error
-        getWeatherBtn.innerHTML = 'Get Weather';
-        getWeatherBtn.disabled = false;
+        setButtonLoading(false);
       }
     }
 
     async function fetchForecast(city) {
       const forecastSection = document.getElementById('forecastSection');
       const chartCanvas = document.getElementById('forecastChart');
-
       try {
         const resp = await fetch(`/api/forecast?city=${encodeURIComponent(city)}`);
         const data = await resp.json();
-
-        if (data.error) {
-          console.error("Forecast Error:", data.error);
-          return;
-        }
-        if (!data.forecast || !data.forecast.length) return;
-
+        if (data.error || !data.forecast) return;
         forecastSection.style.display = 'block';
-
         const labels = data.forecast.map(item => item.date);
         const temps = data.forecast.map(item => item.temp);
-
-        // If we already have a chart instance, destroy it before re-creating
         if (window.forecastChartInstance) {
           window.forecastChartInstance.destroy();
         }
-
-        // Create a new chart with fixed size by disabling responsiveness
         window.forecastChartInstance = new Chart(chartCanvas, {
           type: 'line',
           data: {
             labels: labels,
             datasets: [{
-              label: 'Temperature (°C)',
+              label: 'Temperature (' + (tempUnit === "imperial" ? "°F" : "°C") + ')',
               data: temps,
               borderColor: 'rgba(54, 162, 235, 1)',
               backgroundColor: 'rgba(54, 162, 235, 0.2)',
@@ -189,7 +166,7 @@
             }]
           },
           options: {
-            responsive: false, // Fixed size chart
+            responsive: false,
             maintainAspectRatio: false,
             scales: {
               y: { beginAtZero: false }
@@ -201,9 +178,127 @@
       }
     }
 
-    // 3) Confetti function
+    function clearWeatherDisplay() {
+      const weatherResult = document.getElementById('weatherResult');
+      weatherResult.classList.add('d-none');
+      weatherResult.innerHTML = '';
+      const weatherIcon = document.getElementById('weatherIcon');
+      if (weatherIcon) weatherIcon.style.display = 'none';
+      document.getElementById('favoritesForm').style.display = 'none';
+    }
+
+    function displayWeatherError(error) {
+      const weatherResult = document.getElementById('weatherResult');
+      weatherResult.textContent = "Error: " + error;
+      weatherResult.className = "alert alert-danger animate__animated animate__fadeIn";
+      weatherResult.classList.remove('d-none');
+    }
+
+    function displayWeatherData(data) {
+  const weatherResult = document.getElementById('weatherResult');
+  let weatherText = document.getElementById('weatherText');
+  if (!weatherText) {
+    console.warn("Element with id 'weatherText' not found. Creating it dynamically.");
+    weatherText = document.createElement('span');
+    weatherText.id = 'weatherText';
+    weatherResult.appendChild(weatherText);
+  }
+  weatherText.innerHTML = `<strong>Weather for ${data.city}:</strong> ${data.weather_info}`;
+  weatherResult.className = "alert alert-success animate__animated animate__fadeIn";
+  weatherResult.classList.remove('d-none');
+
+  const weatherIcon = document.getElementById('weatherIcon');
+  if (data.icon && weatherIcon) {
+    weatherIcon.src = "https://openweathermap.org/img/wn/" + data.icon + "@2x.png";
+    weatherIcon.style.display = 'inline';
+  }
+
+  const favoritesForm = document.getElementById('favoritesForm');
+  if (favoritesForm) {
+    favoritesForm.style.display = 'block';
+  }
+  const favoriteCityInput = document.getElementById('favoriteCityInput');
+  if (favoriteCityInput) {
+    favoriteCityInput.value = data.city;
+  }
+  updateBackground(data.weather_main);
+}
+
+    // 3) Detect Location and fetch weather by coordinates
+    function detectLocation() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(function(position) {
+          fetchWeatherByCoords(position.coords.latitude, position.coords.longitude);
+        }, function(error) {
+          console.error("Geolocation error:", error);
+          showToast("Unable to retrieve location.");
+        });
+      } else {
+        showToast("Geolocation is not supported by your browser.");
+      }
+    }
+
+    async function fetchWeatherByCoords(lat, lon) {
+      clearWeatherDisplay();
+      setButtonLoading(true);
+      try {
+        const resp = await fetch(`/api/weather?lat=${lat}&lon=${lon}`);
+        const data = await resp.json();
+        if (data.error) {
+          displayWeatherError(data.error);
+        } else {
+          displayWeatherData(data);
+          await fetchForecast(data.city);
+          showToast("Weather data fetched successfully!");
+          fireConfetti();
+        }
+      } catch (err) {
+        console.error("Request failed:", err);
+        displayWeatherError(err);
+      } finally {
+        setButtonLoading(false);
+      }
+    }
+
+    // 4) Update background based on weather condition
+    function updateBackground(condition) {
+      let bgColor = "";
+      if (!condition) return;
+      condition = condition.toLowerCase();
+      if (condition.includes("clear")) {
+        bgColor = "linear-gradient(135deg, #81ecec, #74b9ff)";
+      } else if (condition.includes("cloud")) {
+        bgColor = "linear-gradient(135deg, #dfe6e9, #b2bec3)";
+      } else if (condition.includes("rain")) {
+        bgColor = "linear-gradient(135deg, #74b9ff, #0984e3)";
+      } else if (condition.includes("snow")) {
+        bgColor = "linear-gradient(135deg, #dfe6e9, #ffffff)";
+      } else {
+        bgColor = "linear-gradient(135deg, #55efc4, #81ecec)";
+      }
+      document.body.style.background = bgColor;
+    }
+
+    // 5) Toast notification using Bootstrap with error checking
+    function showToast(message) {
+      var toastBody = document.getElementById('toastBody');
+      if (toastBody) {
+        toastBody.textContent = message;
+      } else {
+        console.warn("Toast body element not found.");
+      }
+      var toastEl = document.getElementById('liveToast');
+      if (toastEl) {
+        var toast = new bootstrap.Toast(toastEl);
+        toast.show();
+      } else {
+        console.warn("Live toast element not found.");
+      }
+    }
+
+    // 6) Confetti function
     function fireConfetti() {
-      const duration = 1.5 * 1000; // 1.5 seconds
+      const duration = 1.5 * 1000;
       const end = Date.now() + duration;
       (function frame() {
         confetti({
@@ -216,6 +311,22 @@
           requestAnimationFrame(frame);
         }
       })();
+    }
+
+    // 7) Set button to loading state
+    function setButtonLoading(isLoading) {
+      const btn = document.getElementById('getWeatherBtn');
+      if (!btn) {
+        console.warn("Button with id 'getWeatherBtn' not found.");
+        return;
+      }
+      if (isLoading) {
+        btn.innerHTML = 'Loading...';
+        btn.disabled = true;
+      } else {
+        btn.innerHTML = 'Get Weather';
+        btn.disabled = false;
+      }
     }
   </script>
 {% endblock %}
