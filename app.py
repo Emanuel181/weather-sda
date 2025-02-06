@@ -105,22 +105,30 @@ def api_forecast():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/aqi")
-def api_aqi():
-    lat = request.args.get("lat")
-    lon = request.args.get("lon")
-    if not lat or not lon:
-        return jsonify({"error": "Missing latitude or longitude"}), 400
+@app.route('/api/aqi')
+def get_aqi():
+    city = request.args.get('city')
+    if not city:
+        return jsonify({"error": "City is required"}), 400
 
     try:
-        aqi_url = f"http://api.openweathermap.org/data/2.5/air_pollution"
-        params = {"lat": lat, "lon": lon, "appid": OPENWEATHER_API_KEY}
+        aqi_url = f"http://api.airvisual.com/v2/city"
+        params = {
+            "city": city,
+            "key": AIRVISUAL_API_KEY
+        }
         resp = requests.get(aqi_url, params=params)
-        if resp.status_code != 200:
-            return jsonify({"error": "Failed to fetch AQI data"}), 500
         data = resp.json()
-        aqi = data.get("list", [])[0].get("main", {}).get("aqi", "N/A")
-        return jsonify({"aqi": aqi}), 200
+
+        if resp.status_code != 200 or "data" not in data:
+            return jsonify({"error": data.get("message", "Failed to fetch AQI data.")}), 400
+
+        aqi_data = data["data"]["current"]["pollution"]
+        aqi = aqi_data["aqius"]
+        description = "Good" if aqi <= 50 else "Moderate" if aqi <= 100 else "Unhealthy"
+
+        return jsonify({"aqi": aqi, "description": description})
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
