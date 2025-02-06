@@ -5,16 +5,73 @@
 {% endblock %}
 
 {% block content %}
-  <h2 class="mb-4">Your Favorite Cities</h2>
+<div class="container">
+  <h2 class="mb-4 text-center">Your Favorite Cities</h2>
+
+  <!-- Search bar to filter favorite cities -->
+  <div class="input-group mb-4" style="max-width: 400px; margin: auto;">
+    <input type="text" id="searchFavorites" class="form-control" placeholder="Search favorite cities...">
+    <button class="btn btn-outline-secondary" onclick="resetSearch()">Clear</button>
+  </div>
+
   {% if favorites %}
-    <ul class="list-group animate__animated animate__fadeIn">
+    <ul class="list-group animate__animated animate__fadeIn" id="favoritesList">
       {% for city in favorites %}
-        <li class="list-group-item animate__animated animate__bounceIn">{{ city }}</li>
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <span>{{ city }}</span>
+          <div>
+            <!-- View weather button -->
+            <button class="btn btn-sm btn-primary me-2" onclick="viewWeather('{{ city }}')">View Weather</button>
+            <!-- Remove button -->
+            <button class="btn btn-sm btn-danger" onclick="removeFavorite('{{ city }}')">Remove</button>
+          </div>
+        </li>
       {% endfor %}
     </ul>
   {% else %}
-    <p class="text-muted animate__animated animate__lightSpeedInLeft">
+    <p class="text-muted animate__animated animate__lightSpeedInLeft text-center">
       No favorite cities yet. Try searching on the <a href="{{ url_for('index') }}">main page</a> and add some!
     </p>
   {% endif %}
+</div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const searchFavoritesInput = document.getElementById("searchFavorites");
+    const favoritesList = document.getElementById("favoritesList");
+
+    // Filter favorites by search input
+    searchFavoritesInput.addEventListener("input", function () {
+      const filter = searchFavoritesInput.value.toLowerCase();
+      const items = favoritesList.querySelectorAll("li");
+      items.forEach((item) => {
+        const cityName = item.querySelector("span").textContent.toLowerCase();
+        if (cityName.includes(filter)) {
+          item.style.display = "flex";
+        } else {
+          item.style.display = "none";
+        }
+      });
+    });
+
+    // Reset search bar and show all favorites
+    window.resetSearch = function () {
+      searchFavoritesInput.value = "";
+      const items = favoritesList.querySelectorAll("li");
+      items.forEach((item) => (item.style.display = "flex"));
+    };
+
+    // Mock functions for "View Weather" and "Remove Favorite"
+    window.viewWeather = function (city) {
+      alert(`Fetching weather for ${city}. (This feature can be implemented.)`);
+    };
+
+    window.removeFavorite = function (city) {
+      if (confirm(`Are you sure you want to remove ${city} from your favorites?`)) {
+        alert(`${city} removed. (This should call a backend endpoint to handle deletion.)`);
+        // Logic to handle actual removal goes here.
+      }
+    };
+  });
+</script>
 {% endblock %}

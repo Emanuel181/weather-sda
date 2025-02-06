@@ -10,22 +10,20 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # Replace with your actual OpenWeatherMap API key
 OPENWEATHER_API_KEY = "671fdaa031def78f82865cfb3174d352"
 
-# In‑memory favorites list
+# In-memory favorites list
 favorite_cities = []
 
 # Global temperature unit; "metric" (°C) or "imperial" (°F)
 temp_unit = "metric"
 
+
 @app.route("/")
 def index():
     return render_template("index.html", temp_unit=temp_unit)
 
+
 @app.route("/api/weather")
 def api_weather():
-    """
-    Returns weather info as JSON. Accepts either a "city" parameter or
-    "lat" and "lon" parameters (for auto‑detect).
-    """
     city = request.args.get("city")
     lat = request.args.get("lat")
     lon = request.args.get("lon")
@@ -47,11 +45,15 @@ def api_weather():
             description = data['weather'][0]['description']
             temp = data['main']['temp']
             icon = data['weather'][0]['icon']
+            sunrise = data['sys']['sunrise']
+            sunset = data['sys']['sunset']
             return jsonify({
                 "city": city,
                 "weather_info": f"{main} ({description}), {temp} °{'F' if temp_unit=='imperial' else 'C'}",
                 "weather_main": main,
-                "icon": icon
+                "icon": icon,
+                "sunrise": sunrise,
+                "sunset": sunset,
             })
         else:
             message = data.get("message", "Something went wrong.")
@@ -59,11 +61,9 @@ def api_weather():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @app.route("/api/forecast")
 def api_forecast():
-    """
-    Returns a 5‑day forecast as JSON for a given city or coordinates.
-    """
     city = request.args.get("city")
     lat = request.args.get("lat")
     lon = request.args.get("lon")
@@ -83,7 +83,6 @@ def api_forecast():
         if resp.status_code == 200:
             forecast_list = data.get("list", [])
             daily_data = []
-            # Get roughly one reading per day (every 8 items)
             for i in range(0, len(forecast_list), 8):
                 item = forecast_list[i]
                 dt_txt = item.get("dt_txt", "")
@@ -105,6 +104,27 @@ def api_forecast():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route("/api/aqi")
+def api_aqi():
+    lat = request.args.get("lat")
+    lon = request.args.get("lon")
+    if not lat or not lon:
+        return jsonify({"error": "Missing latitude or longitude"}), 400
+
+    try:
+        aqi_url = f"http://api.openweathermap.org/data/2.5/air_pollution"
+        params = {"lat": lat, "lon": lon, "appid": OPENWEATHER_API_KEY}
+        resp = requests.get(aqi_url, params=params)
+        if resp.status_code != 200:
+            return jsonify({"error": "Failed to fetch AQI data"}), 500
+        data = resp.json()
+        aqi = data.get("list", [])[0].get("main", {}).get("aqi", "N/A")
+        return jsonify({"aqi": aqi}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/add_favorite", methods=["POST"])
 def add_favorite():
     city = request.form.get("favorite_city")
@@ -112,36 +132,28 @@ def add_favorite():
         favorite_cities.append(city)
     return redirect(url_for("show_favorites"))
 
+
 @app.route("/favorites")
 def show_favorites():
     return render_template("favorites.html", favorites=favorite_cities)
+
 
 @app.route("/toggle_unit", methods=["POST"])
 def toggle_unit():
     global temp_unit
     temp_unit = "imperial" if temp_unit == "metric" else "metric"
-    # If AJAX request, return JSON; otherwise, redirect
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({"temp_unit": temp_unit})
     return redirect(url_for("index"))
 
-# Socket.IO event handlers for chat
+
 @socketio.on('chat_message')
 def handle_chat_message(data):
     msg_text = data.get('text', '')
-    print("Received chat message:", msg_text)
     emit('chat_message', {'message': f"User {request.sid} says: {msg_text}"}, broadcast=True)
-    # Simple bot response if message starts with "!bot"
-    if msg_text.toLowerCase().startsWith("!bot"):
+    if msg_text.lower().startswith("!bot"):
         emit('chat_message', {'message': "Bot: Remember to check the weather before heading out!"}, broadcast=True)
 
-@socketio.on('connect')
-def handle_connect():
-    print(f"A client connected with SID: {request.sid}")
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    print(f"A client disconnected. SID was: {request.sid}")
 
 @app.route('/api/reverse_geocode', methods=['GET'])
 def reverse_geocode():
@@ -151,7 +163,6 @@ def reverse_geocode():
         return jsonify({"error": "Missing latitude or longitude"}), 400
 
     try:
-        # Call OpenWeatherMap Geocoding API
         geocode_url = f"http://api.openweathermap.org/geo/1.0/reverse"
         params = {
             "lat": lat,
@@ -170,6 +181,7 @@ def reverse_geocode():
         return jsonify({"city": city}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     socketio.run(app, host="127.0.0.1", port=5000, debug=True)

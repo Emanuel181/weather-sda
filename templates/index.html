@@ -20,6 +20,14 @@
     </button>
   </div>
 
+  <!-- Add to favorites form -->
+  <div class="d-flex align-items-center mb-4">
+    <button id="addFavoriteBtn" class="btn btn-warning d-none me-3">Add to Favorites</button>
+    <form method="POST" action="{{ url_for('add_favorite') }}" style="display: none;" id="favoritesForm">
+      <input type="hidden" name="favorite_city" id="favoriteCityInput" />
+    </form>
+  </div>
+
   <!-- Temperature unit toggle button (AJAX toggle, no refresh) -->
   <button id="toggleUnitBtn" class="btn btn-outline-info mb-3">
     Toggle °C/°F (Current: {{ temp_unit }})
@@ -29,6 +37,17 @@
   <div id="weatherResult" class="alert d-none" style="min-height: 50px;">
     <img id="weatherIcon" src="" alt="Weather Icon" style="display: none; vertical-align: middle; margin-right: 10px;">
     <span id="weatherText"></span>
+  </div>
+
+      <!-- Air Quality Index -->
+  <div id="aqiResult" class="alert alert-info d-none mt-3">
+    <strong>Air Quality Index:</strong> <span id="aqiValue"></span>
+  </div>
+
+      <!-- Sunrise and Sunset -->
+  <div id="sunTimes" class="mt-3">
+    <p><strong>Sunrise:</strong> <span id="sunriseTime"></span></p>
+    <p><strong>Sunset:</strong> <span id="sunsetTime"></span></p>
   </div>
 
   <!-- Add to favorites form -->
@@ -47,6 +66,12 @@
   </div>
 
   <hr/>
+
+      <!-- Weather Statistics -->
+  <div id="weatherStats" class="mt-4" style="display:none;">
+    <h3>Temperature Trends (Last 7 Days)</h3>
+    <canvas id="statsChart" width="400" height="200"></canvas>
+  </div>
 
   <!-- Real-Time Chat Section -->
   <div class="chat-section">
@@ -254,37 +279,50 @@
       }
     }
 
-    // Utility Functions
     function clearWeatherDisplay() {
       document.getElementById("weatherResult").classList.add("d-none");
       document.getElementById("forecastSection").style.display = "none";
+      document.getElementById("sunriseTime").textContent = "";
+      document.getElementById("sunsetTime").textContent = "";
     }
 
     function displayWeatherData(data) {
       const weatherResult = document.getElementById("weatherResult");
       const weatherText = document.getElementById("weatherText");
       const weatherIcon = document.getElementById("weatherIcon");
+      const sunriseTime = document.getElementById("sunriseTime");
+      const sunsetTime = document.getElementById("sunsetTime");
 
+      // Update weather text
       if (weatherText) {
         weatherText.innerHTML = `<strong>Weather for ${data.city}:</strong> ${data.weather_info}`;
       }
 
+      // Update weather icon
       if (data.icon && weatherIcon) {
         weatherIcon.src = `https://openweathermap.org/img/wn/${data.icon}@2x.png`;
         weatherIcon.style.display = "inline";
       }
 
-      weatherResult.className = "alert alert-success animate__animated animate__fadeIn";
-      weatherResult.classList.remove("d-none");
-
-      const favoritesForm = document.getElementById("favoritesForm");
-      if (favoritesForm) {
-        favoritesForm.style.display = "block";
-        document.getElementById("favoriteCityInput").value = data.city;
+      // Update sunrise and sunset
+      if (data.sunrise && sunriseTime) {
+        sunriseTime.textContent = formatTimestamp(data.sunrise);
+      }
+      if (data.sunset && sunsetTime) {
+        sunsetTime.textContent = formatTimestamp(data.sunset);
       }
 
-      updateBackground(data.weather_main);
+      weatherResult.className = "alert alert-success animate__animated animate__fadeIn";
+      weatherResult.classList.remove("d-none");
     }
+
+        function formatTimestamp(timestamp) {
+      const date = new Date(timestamp * 1000);
+      const hours = date.getHours();
+      const minutes = date.getMinutes();
+      return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+    }
+
 
     function displayForecast(forecast) {
       const forecastSection = document.getElementById("forecastSection");
