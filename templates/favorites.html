@@ -123,24 +123,25 @@
     };
 
     // Check Air Quality Index (AQI)
-    window.checkAirQuality = async function (city) {
-      try {
-        const resp = await fetch(`/api/aqi?city=${encodeURIComponent(city)}`);
-        const data = await resp.json();
-        if (data.error || !data.aqi) {
-          alert("Could not fetch AQI data.");
-          return;
-        }
+window.checkAirQuality = async function (city) {
+  try {
+    const resp = await fetch(`/api/aqi?city=${encodeURIComponent(city)}`);
+    const data = await resp.json();
+    if (data.error || !data.aqi) {
+      alert("Could not fetch AQI data.");
+      return;
+    }
 
-        const modal = new bootstrap.Modal(document.getElementById("dataModal"));
-        document.getElementById("dataModalLabel").textContent = `Air Quality Index for ${city}`;
-        document.getElementById("modalContent").textContent = `AQI Level: ${data.aqi} - ${data.description}`;
-        document.getElementById("dataChart").style.display = "none";
-        modal.show();
-      } catch (error) {
-        console.error("Error fetching AQI:", error);
-      }
-    };
+    const modal = new bootstrap.Modal(document.getElementById("dataModal"));
+    document.getElementById("dataModalLabel").textContent = `Air Quality Index for ${city}`;
+    document.getElementById("modalContent").textContent = `AQI Level: ${data.aqi} - ${data.description}`;
+    document.getElementById("dataChart").style.display = "none";
+    modal.show();
+  } catch (error) {
+    console.error("Error fetching AQI:", error);
+  }
+};
+
 
     // View on Map
     window.viewOnMap = function (city) {

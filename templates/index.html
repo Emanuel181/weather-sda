@@ -71,42 +71,22 @@
 
 
 <!-- Socket.IO client, Chart.js, and custom scripts -->
-<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+
 
 <script>
   document.addEventListener("DOMContentLoaded", function () {
-    let tempUnit = "{{ temp_unit }}"; // Temperature unit passed from the backend
+    let tempUnit = "{{ temp_unit }}";
 
-    // Initialize Socket.IO
     const socket = io();
-    socket.on("connect", function () {
-      console.log("Connected to server with SID:", socket.id);
-    });
-    socket.on("connect_error", function (error) {
-      console.error("Connection Error:", error);
-    });
-    socket.on("chat_message", function (data) {
-      const chatBox = document.getElementById("chatMessages");
-      const messageElement = document.createElement("p");
-      messageElement.className = "animate__animated animate__fadeInUp";
-      messageElement.textContent = data.message;
-      chatBox.appendChild(messageElement);
-      chatBox.scrollTop = chatBox.scrollHeight;
-    });
 
+    const sentMessages = new Set();
+
+    const chatMessages = document.getElementById("chatMessages");
     const chatInput = document.getElementById("chatInput");
     const sendChatBtn = document.getElementById("sendChatBtn");
-
-    sendChatBtn.addEventListener("click", function () {
-      const message = chatInput.value.trim();
-      if (message) {
-        socket.emit("chat_message", { text: message });
-        chatInput.value = "";
-      }
-    });
-
-    // DOM Elements
+    const typingIndicator = document.getElementById("typingIndicator");
     const cityInput = document.getElementById("cityInput");
     const getWeatherBtn = document.getElementById("getWeatherBtn");
     const detectLocationBtn = document.getElementById("detectLocationBtn");
@@ -120,26 +100,71 @@
     const sunriseTime = document.getElementById("sunriseTime");
     const sunsetTime = document.getElementById("sunsetTime");
     const forecastSection = document.getElementById("forecastSection");
+    const forecastChartCanvas = document.getElementById("forecastChart");
     const toastBody = document.getElementById("toastBody");
     const toastEl = document.getElementById("liveToast");
-    const forecastChartCanvas = document.getElementById("forecastChart");
 
-    let forecastChart; // Store the chart instance
+    let forecastChart;
+    let typingTimeout;
 
-    // Enable the "Add to Favorites" button with the current city
-    function enableAddToFavorites(city) {
-      if (city) {
-        favoriteCityInput.value = city;
-        addFavoriteBtn.classList.remove("d-none");
-        addFavoriteBtn.addEventListener("click", function () {
-          favoritesForm.submit();
-        });
-      } else {
-        addFavoriteBtn.classList.add("d-none");
-      }
+    socket.on("connect", () => console.log(`Connected to server with SID: ${socket.id}`));
+    socket.on("connect_error", (error) => console.error("Connection Error:", error));
+    // Listen for incoming chat messages
+    socket.on("chat_message", ({ text, timestamp, sender }) => {
+        appendMessage(text, timestamp, sender === socket.id ? "You" : sender);
+    });
+
+    // Listen for typing events
+    socket.on("typing", ({ typing, sender }) => {
+        if (sender === socket.id) return; // Ignore self-typing events
+        typingIndicator.textContent = typing ? `${sender} is typing...` : "";
+    });
+
+    // Emit a chat message
+    sendChatBtn.addEventListener("click", () => {
+        const message = chatInput.value.trim();
+        if (message) {
+            const timestamp = new Date().toISOString();
+            socket.emit("chat_message", { text: message, timestamp });
+            chatInput.value = ""; // Clear the input box
+        }
+    });
+
+    // Emit typing events
+    chatInput.addEventListener("input", () => {
+        socket.emit("typing", { typing: true });
+
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => {
+            socket.emit("typing", { typing: false });
+        }, 2000); // Stop typing after 2 seconds of no input
+    });
+
+    // Utility: Append a message to the chat box
+    function appendMessage(text, timestamp, sender) {
+        if (!text || !timestamp) return;
+
+        const formattedTime = new Date(timestamp).toLocaleTimeString();
+        const messageElement = document.createElement("p");
+        messageElement.textContent = `[${formattedTime}] ${sender}: ${text}`;
+        chatMessages.appendChild(messageElement);
+
+        // Auto-scroll to the bottom
+        chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
-    // Fetch Weather Data
+  // Utility: Format timestamp into readable time
+  function formatTimestamp(timestamp) {
+    try {
+      const date = new Date(timestamp);
+      if (isNaN(date.getTime())) throw new Error("Invalid date");
+      return date.toLocaleTimeString();
+    } catch (error) {
+      console.error("Invalid timestamp:", timestamp, error);
+      return "Invalid Date";
+    }
+  }
+
     async function fetchWeather() {
       const city = cityInput.value.trim();
       if (!city) {
@@ -161,17 +186,15 @@
           enableAddToFavorites(data.city);
           await fetchForecast(data.city);
           showToast("Weather data fetched successfully!");
-          fireConfetti();
         }
       } catch (error) {
         console.error("Request failed:", error);
-        displayWeatherError(error.message);
+        displayWeatherError(error.message || "Failed to fetch weather data.");
       } finally {
         setButtonLoading(getWeatherBtn, false);
       }
     }
 
-    // Fetch Forecast Data
     async function fetchForecast(city) {
       if (!city) {
         console.error("Invalid city for forecast request");
@@ -190,51 +213,6 @@
       }
     }
 
-    // Detect Location
-    async function detectLocation() {
-      if (!navigator.geolocation) {
-        showToast("Geolocation is not supported by your browser.");
-        return;
-      }
-
-      navigator.geolocation.getCurrentPosition(async function (position) {
-        const { latitude, longitude } = position.coords;
-
-        try {
-          const response = await fetch(`/api/reverse_geocode?lat=${latitude}&lon=${longitude}`);
-          const data = await response.json();
-
-          if (data.error || !data.city) {
-            showToast("Could not detect location.");
-          } else {
-            cityInput.value = data.city;
-            fetchWeather();
-          }
-        } catch (error) {
-          console.error("Reverse geocoding failed:", error);
-          showToast("Unable to retrieve location.");
-        }
-      });
-    }
-
-    // Toggle Temperature Unit
-    async function toggleUnit() {
-      try {
-        const response = await fetch("/toggle_unit", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
-        });
-        const data = await response.json();
-        tempUnit = data.temp_unit;
-        toggleUnitBtn.textContent = `Toggle °C/°F (Current: ${tempUnit})`;
-        fetchWeather();
-      } catch (error) {
-        console.error("Toggle unit failed:", error);
-        showToast("Error toggling unit.");
-      }
-    }
-
-    // Display Weather Data
     function displayWeatherData(data) {
       weatherText.innerHTML = `<strong>Weather for ${data.city}:</strong> ${data.weather_info}`;
       if (data.icon) {
@@ -247,7 +225,6 @@
       weatherResult.classList.remove("d-none");
     }
 
-    // Display Forecast Data
     function displayForecast(forecast) {
       const labels = forecast.map((item) => item.date);
       const temps = forecast.map((item) => item.temp);
@@ -260,23 +237,20 @@
         type: "line",
         data: {
           labels,
-          datasets: [{ label: `Temperature (${tempUnit === "imperial" ? "°F" : "°C"})`, data: temps, borderColor: "rgba(54, 162, 235, 1)", backgroundColor: "rgba(54, 162, 235, 0.2)", fill: true }],
+          datasets: [
+            {
+              label: `Temperature (${tempUnit === "imperial" ? "°F" : "°C"})`,
+              data: temps,
+              borderColor: "rgba(54, 162, 235, 1)",
+              backgroundColor: "rgba(54, 162, 235, 0.2)",
+              fill: true,
+            },
+          ],
         },
-        options: { responsive: false, maintainAspectRatio: false },
+        options: { responsive: true, maintainAspectRatio: false },
       });
 
       forecastSection.style.display = "block";
-    }
-
-    // Utility Functions
-    function formatTimestamp(timestamp) {
-      const date = new Date(timestamp * 1000);
-      return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
-    }
-
-    function showToast(message) {
-      toastBody.textContent = message;
-      new bootstrap.Toast(toastEl).show();
     }
 
     function clearWeatherDisplay() {
@@ -296,22 +270,27 @@
       button.disabled = isLoading;
     }
 
-    function fireConfetti() {
-      const duration = 1.5 * 1000;
-      const end = Date.now() + duration;
-
-      (function frame() {
-        confetti({ particleCount: 5, startVelocity: 30, spread: 360, origin: { x: Math.random(), y: Math.random() * 0.2 } });
-        if (Date.now() < end) requestAnimationFrame(frame);
-      })();
+    function showToast(message) {
+      toastBody.textContent = message;
+      new bootstrap.Toast(toastEl).show();
     }
 
-    // Attach Event Listeners
+    function enableAddToFavorites(city) {
+      if (city) {
+        favoriteCityInput.value = city;
+        addFavoriteBtn.classList.remove("d-none");
+        addFavoriteBtn.onclick = () => favoritesForm.submit();
+      } else {
+        addFavoriteBtn.classList.add("d-none");
+      }
+    }
+
     getWeatherBtn.addEventListener("click", fetchWeather);
-    detectLocationBtn.addEventListener("click", detectLocation);
-    toggleUnitBtn.addEventListener("click", toggleUnit);
+    detectLocationBtn.addEventListener("click", fetchWeather);
+    toggleUnitBtn.addEventListener("click", fetchWeather);
   });
 </script>
+
 
 
 {% endblock %}

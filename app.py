@@ -112,25 +112,62 @@ def get_aqi():
         return jsonify({"error": "City is required"}), 400
 
     try:
-        aqi_url = f"http://api.airvisual.com/v2/city"
-        params = {
-            "city": city,
-            "key": AIRVISUAL_API_KEY
+        # Geocode the city to get latitude and longitude
+        geocode_url = f"http://api.openweathermap.org/geo/1.0/direct"
+        geocode_params = {
+            "q": city,
+            "limit": 1,
+            "appid": OPENWEATHER_API_KEY
         }
-        resp = requests.get(aqi_url, params=params)
-        data = resp.json()
+        geocode_resp = requests.get(geocode_url, params=geocode_params)
+        geocode_data = geocode_resp.json()
 
-        if resp.status_code != 200 or "data" not in data:
-            return jsonify({"error": data.get("message", "Failed to fetch AQI data.")}), 400
+        if not geocode_data or "lat" not in geocode_data[0] or "lon" not in geocode_data[0]:
+            return jsonify({"error": "City not found."}), 404
 
-        aqi_data = data["data"]["current"]["pollution"]
-        aqi = aqi_data["aqius"]
-        description = "Good" if aqi <= 50 else "Moderate" if aqi <= 100 else "Unhealthy"
+        lat = geocode_data[0]["lat"]
+        lon = geocode_data[0]["lon"]
 
-        return jsonify({"aqi": aqi, "description": description})
+        # Fetch air quality data
+        air_quality_url = f"http://api.openweathermap.org/data/2.5/air_pollution"
+        air_quality_params = {
+            "lat": lat,
+            "lon": lon,
+            "appid": OPENWEATHER_API_KEY
+        }
+        aqi_resp = requests.get(air_quality_url, params=air_quality_params)
+        aqi_data = aqi_resp.json()
+
+        if "list" not in aqi_data or not aqi_data["list"]:
+            return jsonify({"error": "Air quality data not available."}), 404
+
+        air_data = aqi_data["list"][0]["main"]
+        aqi = air_data["aqi"]
+
+        return jsonify({
+            "city": city,
+            "aqi": aqi,
+            "description": describe_aqi(aqi)
+        })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+def describe_aqi(aqi):
+    """Returns a description of the AQI level based on OpenWeather's scale."""
+    if aqi == 1:
+        return "Good"
+    elif aqi == 2:
+        return "Fair"
+    elif aqi == 3:
+        return "Moderate"
+    elif aqi == 4:
+        return "Poor"
+    elif aqi == 5:
+        return "Very Poor"
+    else:
+        return "Unknown"
 
 
 @app.route("/add_favorite", methods=["POST"])
@@ -155,12 +192,33 @@ def toggle_unit():
     return redirect(url_for("index"))
 
 
+# Typing event handler
+@socketio.on('typing')
+def handle_typing(data):
+    typing = data.get('typing', False)
+    sender = request.sid  # Use the session ID as the sender identifier
+
+    # Broadcast the typing status to all clients except the sender
+    emit('typing', {
+        'typing': typing,
+        'sender': sender
+    }, broadcast=True, skip_sid=sender)
+
+
 @socketio.on('chat_message')
 def handle_chat_message(data):
-    msg_text = data.get('text', '')
-    emit('chat_message', {'message': f"User {request.sid} says: {msg_text}"}, broadcast=True)
-    if msg_text.lower().startswith("!bot"):
-        emit('chat_message', {'message': "Bot: Remember to check the weather before heading out!"}, broadcast=True)
+    text = data.get('text', '')
+    timestamp = data.get('timestamp', '')
+    sender = request.sid  # Use session ID as sender identifier
+
+    # Broadcast to all clients, including the sender
+    emit('chat_message', {
+        'text': text,
+        'timestamp': timestamp,
+        'sender': sender
+    }, broadcast=True)
+
+
 
 
 @app.route('/api/reverse_geocode', methods=['GET'])
