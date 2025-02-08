@@ -77,11 +77,14 @@
       50% { background-position: 100% 50%; }
       100% { background-position: 0% 50%; }
     }
-    /* Main Layout */
+    /* Main Layout with Background Effect */
     .container {
       max-width: 1200px;
-      margin: 20px auto;
-      padding: 20px;
+      margin: 40px auto;
+      padding: 30px;
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 15px;
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.1);
     }
     /* Card Styles */
     .card {
@@ -181,11 +184,12 @@
       background: #fff;
       color: var(--text-color);
     }
-    /* Forecast Chart Wrapper to fix infinite height issue */
+    /* Forecast Chart Wrapper with Fixed, Smaller Height */
     #forecastChartWrapper {
       position: relative;
-      height: 200px; /* Fixed height */
+      height: 120px;  /* Fixed smaller height */
       width: 100%;
+      overflow: hidden;
     }
     #forecastChart {
       position: absolute;
