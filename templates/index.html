@@ -12,6 +12,59 @@
     .rainy-bg { background: linear-gradient(135deg, #a1c4fd, #c2e9fb); }
     .default-bg { background: #f5f5f5; }
 
+    /* Dark mode styling */
+    .dark-mode {
+      background-color: #121212;
+      color: #e0e0e0;
+    }
+    .dark-mode .btn {
+      background-color: #424242;
+      border-color: #616161;
+      color: #e0e0e0;
+    }
+    .dark-mode .alert {
+      background-color: #424242;
+      border-color: #616161;
+      color: #e0e0e0;
+    }
+    .dark-mode .favorites-list li {
+      background-color: #333;
+    }
+    .dark-mode #autocompleteSuggestions {
+      background-color: #333;
+      color: #e0e0e0;
+    }
+    .dark-mode #autocompleteSuggestions a {
+      color: #e0e0e0;
+    }
+    .dark-mode #autocompleteSuggestions a:hover {
+      background-color: #444;
+    }
+
+    /* Autocomplete Suggestions Styling */
+    #autocompleteSuggestions {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      display: none;
+      border: 1px solid #ccc;
+      background-color: #fff;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    #autocompleteSuggestions a {
+      display: block;
+      padding: 5px 10px;
+      cursor: pointer;
+      text-decoration: none;
+      color: #333;
+    }
+    #autocompleteSuggestions a:hover {
+      background-color: #eee;
+    }
+
     /* Loading Spinner Overlay */
     .spinner-overlay {
       position: fixed;
@@ -53,6 +106,14 @@
       background: #eee;
       border-radius: 4px;
       cursor: pointer;
+      display: flex;
+      align-items: center;
+    }
+    .favorites-list li span {
+      flex-grow: 1;
+    }
+    .favorites-list li button {
+      margin-left: 10px;
     }
   </style>
 
@@ -63,15 +124,15 @@
 
   <h1 class="mb-4">Check the Weather (No Refresh)</h1>
 
-  <!-- Input group with manual entry, Voice Input, Get Weather, and Detect Location buttons -->
-  <div class="d-flex mb-3" style="max-width: 400px;">
-    <input type="text" id="cityInput" class="form-control animate__animated animate__bounceInLeft" placeholder="Enter city name" />
-    <!-- Voice input button -->
-    <button id="voiceInputBtn" class="btn btn-info ms-2" title="Speak city name">
-      🎤
-    </button>
-    <button id="getWeatherBtn" class="btn btn-primary animate__animated animate__bounceInRight ms-2">Get Weather</button>
-    <button id="detectLocationBtn" class="btn btn-secondary ms-2">Detect Location</button>
+  <!-- Input group with manual entry, Get Weather, and Detect Location buttons -->
+  <div class="position-relative mb-3" style="max-width: 400px;">
+    <input type="text" id="cityInput" class="form-control animate__animated animate__bounceInLeft" placeholder="Enter city name" autocomplete="off" />
+    <!-- Autocomplete Suggestions Container -->
+    <div id="autocompleteSuggestions"></div>
+    <div class="mt-2">
+      <button id="getWeatherBtn" class="btn btn-primary animate__animated animate__bounceInRight">Get Weather</button>
+      <button id="detectLocationBtn" class="btn btn-secondary">Detect Location</button>
+    </div>
   </div>
 
   <!-- Favorites List Section -->
@@ -88,8 +149,11 @@
     </form>
   </div>
 
-  <!-- Temperature unit toggle button -->
-  <button id="toggleUnitBtn" class="btn btn-outline-info mb-3">Toggle °C/°F (Current: {{ temp_unit }})</button>
+  <!-- Temperature unit toggle and Dark Mode toggle buttons -->
+  <div class="mb-3">
+    <button id="toggleUnitBtn" class="btn btn-outline-info">Toggle °C/°F (Current: {{ temp_unit }})</button>
+    <button id="toggleDarkModeBtn" class="btn btn-outline-dark ms-2">Toggle Dark Mode</button>
+  </div>
 
   <!-- Weather result with icon -->
   <div id="weatherResult" class="alert d-none" style="min-height: 50px;">
@@ -102,6 +166,11 @@
     <p><strong>Humidity:</strong> <span id="humidity"></span>%</p>
     <p><strong>Wind Speed:</strong> <span id="windSpeed"></span> m/s</p>
     <p><strong>Pressure:</strong> <span id="pressure"></span> hPa</p>
+  </div>
+
+  <!-- Share Weather Button (initially hidden) -->
+  <div class="mb-3">
+    <button id="shareWeatherBtn" class="btn btn-outline-success d-none">Share Weather</button>
   </div>
 
   <!-- Sunrise and Sunset -->
@@ -150,6 +219,12 @@
     document.addEventListener("DOMContentLoaded", function () {
       let tempUnit = "{{ temp_unit }}";
       const bodyEl = document.body;
+      let lastWeatherData = null;  // Store the latest weather data for sharing
+
+      // Check and apply dark mode from localStorage on load
+      if (localStorage.getItem("darkMode") === "enabled") {
+        bodyEl.classList.add("dark-mode");
+      }
 
       const socket = io();
 
@@ -157,14 +232,16 @@
       const chatInput = document.getElementById("chatInput");
       const sendChatBtn = document.getElementById("sendChatBtn");
       const cityInput = document.getElementById("cityInput");
-      const voiceInputBtn = document.getElementById("voiceInputBtn");
+      const autocompleteSuggestions = document.getElementById("autocompleteSuggestions");
       const getWeatherBtn = document.getElementById("getWeatherBtn");
       const detectLocationBtn = document.getElementById("detectLocationBtn");
       const toggleUnitBtn = document.getElementById("toggleUnitBtn");
+      const toggleDarkModeBtn = document.getElementById("toggleDarkModeBtn");
       const addFavoriteBtn = document.getElementById("addFavoriteBtn");
       const favoritesForm = document.getElementById("favoritesForm");
       const favoriteCityInput = document.getElementById("favoriteCityInput");
       const favoritesList = document.getElementById("favoritesList");
+      const shareWeatherBtn = document.getElementById("shareWeatherBtn");
 
       const weatherResult = document.getElementById("weatherResult");
       const weatherText = document.getElementById("weatherText");
@@ -188,34 +265,33 @@
       socket.on("connect", () => console.log(`Connected to server with SID: ${socket.id}`));
       socket.on("connect_error", (error) => console.error("Connection Error:", error));
       socket.on("chat_message", ({ text, timestamp, sender }) => {
-          appendMessage(text, timestamp, sender === socket.id ? "You" : sender);
+        appendMessage(text, timestamp, sender === socket.id ? "You" : sender);
       });
       socket.on("typing", ({ typing, sender }) => {
-          // Optionally implement a typing indicator.
+        // Optionally implement a typing indicator.
       });
-
       sendChatBtn.addEventListener("click", () => {
-          const message = chatInput.value.trim();
-          if (message) {
-              const timestamp = new Date().toISOString();
-              socket.emit("chat_message", { text: message, timestamp });
-              chatInput.value = "";
-          }
+        const message = chatInput.value.trim();
+        if (message) {
+          const timestamp = new Date().toISOString();
+          socket.emit("chat_message", { text: message, timestamp });
+          chatInput.value = "";
+        }
       });
       chatInput.addEventListener("input", () => {
-          socket.emit("typing", { typing: true });
-          clearTimeout(typingTimeout);
-          typingTimeout = setTimeout(() => {
-              socket.emit("typing", { typing: false });
-          }, 2000);
+        socket.emit("typing", { typing: true });
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => {
+          socket.emit("typing", { typing: false });
+        }, 2000);
       });
       function appendMessage(text, timestamp, sender) {
-          if (!text || !timestamp) return;
-          const formattedTime = new Date(timestamp).toLocaleTimeString();
-          const messageElement = document.createElement("p");
-          messageElement.textContent = `[${formattedTime}] ${sender}: ${text}`;
-          chatMessages.appendChild(messageElement);
-          chatMessages.scrollTop = chatMessages.scrollHeight;
+        if (!text || !timestamp) return;
+        const formattedTime = new Date(timestamp).toLocaleTimeString();
+        const messageElement = document.createElement("p");
+        messageElement.textContent = `[${formattedTime}] ${sender}: ${text}`;
+        chatMessages.appendChild(messageElement);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
       }
       function formatTimestamp(timestamp) {
         try {
@@ -235,7 +311,6 @@
           showToast("Please enter a valid city.");
           return;
         }
-
         clearWeatherDisplay();
         showSpinner(true);
         try {
@@ -245,7 +320,9 @@
             displayWeatherError(data.error);
           } else {
             displayWeatherData(data);
+            lastWeatherData = data; // Save the latest weather data for sharing
             enableAddToFavorites(data.city);
+            shareWeatherBtn.classList.remove("d-none");
             await fetchForecast(data.city);
             showToast("Weather data fetched successfully!");
           }
@@ -272,13 +349,11 @@
         }
       }
       function displayWeatherData(data) {
-        // Main weather text and icon
         weatherText.innerHTML = `<strong>Weather for ${data.city}:</strong> ${data.weather_info}`;
         if (data.icon) {
           weatherIcon.src = `https://openweathermap.org/img/wn/${data.icon}@2x.png`;
           weatherIcon.style.display = "inline";
         }
-        // Detailed metrics (assuming API returns these values)
         if (data.humidity != null) {
           humidityEl.textContent = data.humidity;
           windSpeedEl.textContent = data.wind_speed;
@@ -289,8 +364,7 @@
         if (data.sunset) sunsetTime.textContent = formatTimestamp(data.sunset);
         weatherResult.classList.remove("d-none");
 
-        // Change background theme based on weather condition.
-        // For demonstration, we check if the weather_info string contains certain keywords.
+        // Change background theme based on weather keywords.
         if (data.weather_info.toLowerCase().includes("sunny")) {
           bodyEl.className = "sunny-bg";
         } else if (data.weather_info.toLowerCase().includes("rain")) {
@@ -331,6 +405,7 @@
         weatherDetails.classList.add("d-none");
         sunriseTime.textContent = "";
         sunsetTime.textContent = "";
+        shareWeatherBtn.classList.add("d-none");
       }
       function displayWeatherError(message) {
         weatherResult.textContent = `Error: ${message}`;
@@ -366,11 +441,26 @@
         favoritesList.innerHTML = "";
         favorites.forEach((fav) => {
           const li = document.createElement("li");
-          li.textContent = fav;
-          li.addEventListener("click", () => {
+
+          // Create a span that displays the favorite city
+          const span = document.createElement("span");
+          span.textContent = fav;
+          span.addEventListener("click", () => {
             cityInput.value = fav;
             fetchWeather();
           });
+
+          // Create a remove button
+          const removeBtn = document.createElement("button");
+          removeBtn.textContent = "Remove";
+          removeBtn.className = "btn btn-sm btn-danger";
+          removeBtn.addEventListener("click", (e) => {
+            e.stopPropagation(); // Prevent triggering the span click
+            removeFavorite(fav);
+          });
+
+          li.appendChild(span);
+          li.appendChild(removeBtn);
           favoritesList.appendChild(li);
         });
       }
@@ -383,27 +473,92 @@
           showToast(`Saved ${city} as a favorite!`);
         }
       }
+      function removeFavorite(city) {
+        let favorites = JSON.parse(localStorage.getItem("favorites")) || [];
+        favorites = favorites.filter(item => item !== city);
+        localStorage.setItem("favorites", JSON.stringify(favorites));
+        loadFavorites();
+        showToast(`Removed ${city} from favorites.`);
+      }
 
-      /*** Voice Input for City Search ***/
-      voiceInputBtn.addEventListener("click", () => {
-        // Check for SpeechRecognition support
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-          showToast("Your browser does not support voice recognition.");
+      /*** Autocomplete for City Input using GeoDB Cities API ***/
+      cityInput.addEventListener("input", function () {
+        const query = cityInput.value.trim();
+        autocompleteSuggestions.innerHTML = "";
+        if (query.length < 3) {  // Only query when at least 3 characters
+          autocompleteSuggestions.style.display = "none";
           return;
         }
-        const recognition = new SpeechRecognition();
-        recognition.lang = "en-US";
-        recognition.start();
-        recognition.onresult = (event) => {
-          const transcript = event.results[0][0].transcript;
-          cityInput.value = transcript;
-          showToast("You said: " + transcript);
-        };
-        recognition.onerror = (err) => {
-          console.error("Voice recognition error:", err);
-          showToast("Voice recognition error: " + err.error);
-        };
+        // Fetch suggestions from the GeoDB Cities API
+        fetch(`http://geodb-free-service.wirefreethought.com/v1/geo/cities?limit=5&namePrefix=${encodeURIComponent(query)}`)
+          .then((res) => res.json())
+          .then((data) => {
+            autocompleteSuggestions.innerHTML = "";
+            if (data.data && data.data.length > 0) {
+              data.data.forEach((city) => {
+                const suggestionItem = document.createElement("a");
+                // Construct a label (city name and country)
+                suggestionItem.textContent = `${city.city}, ${city.country}`;
+                suggestionItem.href = "#";
+                suggestionItem.addEventListener("click", function (e) {
+                  e.preventDefault();
+                  cityInput.value = city.city;
+                  autocompleteSuggestions.innerHTML = "";
+                  autocompleteSuggestions.style.display = "none";
+                });
+                autocompleteSuggestions.appendChild(suggestionItem);
+              });
+              autocompleteSuggestions.style.display = "block";
+            } else {
+              autocompleteSuggestions.style.display = "none";
+            }
+          })
+          .catch((err) => {
+            console.error("Error fetching city suggestions:", err);
+            autocompleteSuggestions.style.display = "none";
+          });
+      });
+
+      /*** Dark Mode Toggle with Persistence ***/
+      toggleDarkModeBtn.addEventListener("click", () => {
+        bodyEl.classList.toggle("dark-mode");
+        if (bodyEl.classList.contains("dark-mode")) {
+          localStorage.setItem("darkMode", "enabled");
+          showToast("Dark mode enabled");
+        } else {
+          localStorage.setItem("darkMode", "disabled");
+          showToast("Dark mode disabled");
+        }
+      });
+
+      /*** Share Weather Feature ***/
+      shareWeatherBtn.addEventListener("click", async () => {
+        if (!lastWeatherData) {
+          showToast("No weather data available to share.");
+          return;
+        }
+        const shareText = `Weather for ${lastWeatherData.city}: ${lastWeatherData.weather_info}.` +
+                          (lastWeatherData.temperature ? ` Temperature: ${lastWeatherData.temperature}.` : "");
+        if (navigator.share) {
+          try {
+            await navigator.share({
+              title: `Weather in ${lastWeatherData.city}`,
+              text: shareText,
+              url: window.location.href
+            });
+          } catch (error) {
+            console.error("Error sharing", error);
+            showToast("Error sharing weather data.");
+          }
+        } else {
+          // Fallback: copy to clipboard
+          navigator.clipboard.writeText(shareText).then(() => {
+            showToast("Weather data copied to clipboard!");
+          }, (err) => {
+            console.error("Could not copy text: ", err);
+            showToast("Could not copy weather data.");
+          });
+        }
       });
 
       /*** Event Listeners ***/
