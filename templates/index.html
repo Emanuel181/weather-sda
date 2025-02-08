@@ -5,77 +5,130 @@
 {% endblock %}
 
 {% block content %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Weather + Chat + Forecast</title>
+  <!-- Google Fonts, Animate.css, and Bootstrap CSS -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" crossorigin="anonymous" />
   <style>
-    /* Basic styles, backgrounds, and dark mode settings */
+    :root {
+      --primary-color: #3498db;
+      --secondary-color: #2ecc71;
+      --accent-color: #e74c3c;
+      --light-bg: #f5f5f5;
+      --dark-bg: #121212;
+      --text-color: #333;
+      --dark-text: #e0e0e0;
+      --transition-speed: 0.3s;
+    }
+    /* Global Styles */
+    * { box-sizing: border-box; }
     body {
-      font-family: Arial, sans-serif;
+      font-family: 'Poppins', sans-serif;
+      margin: 0;
+      padding: 0;
+      background: var(--light-bg);
+      color: var(--text-color);
+      overflow-x: hidden;
+      transition: background var(--transition-speed), color var(--transition-speed);
     }
-    .sunny-bg { background: linear-gradient(135deg, #fceabb, #f8b500); }
-    .cloudy-bg { background: linear-gradient(135deg, #bdc3c7, #2c3e50); }
-    .rainy-bg { background: linear-gradient(135deg, #a1c4fd, #c2e9fb); }
-    .default-bg { background: #f5f5f5; }
-
-    /* Dark mode styling */
     .dark-mode {
-      background-color: #121212;
-      color: #e0e0e0;
+      background: var(--dark-bg);
+      color: var(--dark-text);
     }
-    .dark-mode .btn {
-      background-color: #424242;
-      border-color: #616161;
-      color: #e0e0e0;
+    /* Header */
+    header {
+      width: 100%;
+      padding: 20px 40px;
+      background: linear-gradient(135deg, #3498db, #2ecc71);
+      color: #fff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
-    .dark-mode .alert {
-      background-color: #424242;
-      border-color: #616161;
-      color: #e0e0e0;
+    header h1 {
+      margin: 0;
+      font-size: 1.8rem;
     }
-    .dark-mode .favorites-list li {
-      background-color: #333;
-    }
-    .dark-mode #autocompleteSuggestions {
-      background-color: #333;
-      color: #e0e0e0;
-    }
-    .dark-mode #autocompleteSuggestions a {
-      color: #e0e0e0;
-    }
-    .dark-mode #autocompleteSuggestions a:hover {
-      background-color: #444;
-    }
-
-    /* Autocomplete Suggestions Styling */
-    #autocompleteSuggestions {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      right: 0;
-      z-index: 1000;
-      display: none;
-      border: 1px solid #ccc;
-      background-color: #fff;
-      max-height: 200px;
-      overflow-y: auto;
-    }
-    #autocompleteSuggestions a {
-      display: block;
-      padding: 5px 10px;
-      cursor: pointer;
+    nav a {
+      color: #fff;
       text-decoration: none;
-      color: #333;
+      margin: 0 10px;
+      font-weight: 600;
     }
-    #autocompleteSuggestions a:hover {
-      background-color: #eee;
+    /* Hero Section */
+    .hero {
+      padding: 40px;
+      text-align: center;
+      background: linear-gradient(135deg, #f8b500, #fceabb, #f8b500);
+      background-size: 400% 400%;
+      animation: gradientShift 15s ease infinite;
+      color: #fff;
     }
-
-    /* Loading Spinner Overlay */
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    /* Main Layout */
+    .container {
+      max-width: 1200px;
+      margin: 20px auto;
+      padding: 20px;
+    }
+    /* Card Styles */
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .card h3 { text-align: center; margin-top: 0; }
+    /* Button Styles */
+    .btn {
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background var(--transition-speed), transform var(--transition-speed);
+    }
+    .btn-primary {
+      background: var(--primary-color);
+      color: #fff;
+    }
+    .btn-primary:hover {
+      transform: scale(1.05);
+      filter: brightness(90%);
+    }
+    .btn-secondary {
+      background: var(--secondary-color);
+      color: #fff;
+    }
+    .btn-secondary:hover {
+      transform: scale(1.05);
+      filter: brightness(90%);
+    }
+    .btn-outline-dark {
+      background: transparent;
+      border: 2px solid var(--text-color);
+      color: var(--text-color);
+    }
+    /* Spinner */
     .spinner-overlay {
       position: fixed;
-      top: 0;
-      left: 0;
+      top: 0; left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(255, 255, 255, 0.8);
+      background: rgba(255,255,255,0.8);
       display: flex;
       justify-content: center;
       align-items: center;
@@ -84,158 +137,163 @@
     }
     .spinner {
       border: 8px solid #f3f3f3;
-      border-top: 8px solid #3498db;
+      border-top: 8px solid var(--primary-color);
       border-radius: 50%;
       width: 60px;
       height: 60px;
       animation: spin 1s linear infinite;
     }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-
-    /* Favorites List Styling */
-    .favorites-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-      display: flex;
-      flex-wrap: wrap;
-    }
-    .favorites-list li {
-      margin: 5px;
-      padding: 5px 10px;
-      background: #eee;
-      border-radius: 4px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-    }
-    .favorites-list li span {
-      flex-grow: 1;
-    }
-    .favorites-list li button {
-      margin-left: 10px;
-    }
-
-    /* Search History Styling */
-    .search-history {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-      display: flex;
-      flex-wrap: wrap;
-    }
-    .search-history li {
-      margin: 5px;
-      padding: 5px 10px;
-      background: #cce5ff;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-
-    /* Map Container Styling */
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    /* Map Container */
     #map {
       height: 300px;
       width: 100%;
-      margin-top: 20px;
       border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    /* Chat Section */
+    .chat-section {
+      background: rgba(255,255,255,0.9);
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      margin-top: 30px;
+    }
+    .chat-messages {
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      max-height: 200px;
+      overflow-y: auto;
+      padding: 10px;
+      background: #fff;
+      margin-bottom: 10px;
+    }
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 20px;
+      background: var(--primary-color);
+      color: #fff;
+      margin-top: 20px;
+    }
+    /* Toast */
+    .toast {
+      background: #fff;
+      color: var(--text-color);
+    }
+    /* Forecast Chart Wrapper to fix infinite height issue */
+    #forecastChartWrapper {
+      position: relative;
+      height: 200px; /* Fixed height */
+      width: 100%;
+    }
+    #forecastChart {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100% !important;
+      height: 100% !important;
     }
   </style>
+</head>
+<body>
+  <!-- Header -->
+  <header>
+    <h1>Weather Hub</h1>
+    <nav>
+      <a href="#weatherSection">Weather</a>
+      <a href="#forecastSection">Forecast</a>
+      <a href="#chatSection">Chat</a>
+      <a href="#mapSection">Map</a>
+    </nav>
+  </header>
 
-  <!-- Load Leaflet CSS from cdnjs (no SRI attribute) -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" crossorigin="anonymous" />
+  <!-- Hero Section -->
+  <section class="hero">
+    <h1 class="animate__animated animate__fadeInDown">Stay Updated with Real-Time Weather & Chat</h1>
+    <p class="animate__animated animate__fadeInUp">A complete solution to check weather, view forecasts, and chat live.</p>
+  </section>
 
-  <!-- Loading Spinner Overlay -->
-  <div id="loadingSpinner" class="spinner-overlay">
-    <div class="spinner"></div>
-  </div>
+  <!-- Main Content -->
+  <div class="container">
+    <!-- Weather Section -->
+    <section id="weatherSection" class="card">
+      <h3>Weather Information</h3>
+      <div class="mb-3">
+        <input type="text" id="cityInput" class="form-control" placeholder="Enter city name" autocomplete="off" style="padding: 10px; border-radius: 5px; border: 1px solid #ccc;" />
+        <div id="autocompleteSuggestions"></div>
+      </div>
+      <div class="text-center">
+        <button id="getWeatherBtn" class="btn btn-primary">Get Weather</button>
+        <button id="detectLocationBtn" class="btn btn-secondary">Detect Location</button>
+      </div>
+      <div id="weatherResult" class="mt-3 d-none text-center">
+        <img id="weatherIcon" src="" alt="Weather Icon" style="display: none; margin-right: 10px;" />
+        <span id="weatherText"></span>
+      </div>
+      <div id="weatherDetails" class="mt-3 d-none">
+        <p><strong>Humidity:</strong> <span id="humidity"></span>%</p>
+        <p><strong>Wind Speed:</strong> <span id="windSpeed"></span> m/s</p>
+        <p><strong>Pressure:</strong> <span id="pressure"></span> hPa</p>
+      </div>
+      <div id="sunTimes" class="mt-3 text-center">
+        <p><strong>Sunrise:</strong> <span id="sunriseTime"></span></p>
+        <p><strong>Sunset:</strong> <span id="sunsetTime"></span></p>
+      </div>
+      <div class="mt-3 text-center">
+        <button id="shareWeatherBtn" class="btn btn-outline-success d-none">Share Weather</button>
+      </div>
+    </section>
 
-  <h1 class="mb-4">Check the Weather (No Refresh)</h1>
+    <!-- Favorites & Search History Section -->
+    <section class="card">
+      <h3>Favorites & Recent Searches</h3>
+      <div>
+        <h5>Favorites:</h5>
+        <ul id="favoritesList" class="favorites-list"></ul>
+      </div>
+      <div>
+        <h5>Recent Searches:</h5>
+        <ul id="searchHistory" class="search-history"></ul>
+      </div>
+      <div class="text-center">
+        <button id="addFavoriteBtn" class="btn btn-warning d-none">Add to Favorites</button>
+        <form method="POST" action="{{ url_for('add_favorite') }}" style="display: none;" id="favoritesForm">
+          <input type="hidden" name="favorite_city" id="favoriteCityInput" />
+        </form>
+      </div>
+    </section>
 
-  <!-- City Search Input and Autocomplete -->
-  <div class="position-relative mb-3" style="max-width: 400px;">
-    <input type="text" id="cityInput" class="form-control animate__animated animate__bounceInLeft" placeholder="Enter city name" autocomplete="off" />
-    <div id="autocompleteSuggestions"></div>
-    <div class="mt-2">
-      <button id="getWeatherBtn" class="btn btn-primary animate__animated animate__bounceInRight">Get Weather</button>
-      <button id="detectLocationBtn" class="btn btn-secondary">Detect Location</button>
-    </div>
-  </div>
+    <!-- Toggle Buttons Section -->
+    <section class="card text-center">
+      <button id="toggleUnitBtn" class="btn btn-outline-info">Toggle °C/°F (Current: {{ temp_unit }})</button>
+      <button id="toggleDarkModeBtn" class="btn btn-outline-dark ms-2">Toggle Dark Mode</button>
+      <button id="toggleAutoRefreshBtn" class="btn btn-outline-primary ms-2">Enable Auto Refresh</button>
+    </section>
 
-  <!-- Favorites Panel -->
-  <div class="mb-4">
-    <h5>Favorites:</h5>
-    <ul id="favoritesList" class="favorites-list"></ul>
-  </div>
+    <!-- Forecast Section -->
+    <section id="forecastSection" class="card d-none">
+      <h3 class="text-center">5-Day Forecast</h3>
+      <div id="forecastChartWrapper">
+        <canvas id="forecastChart"></canvas>
+      </div>
+    </section>
 
-  <!-- Search History Panel -->
-  <div class="mb-4">
-    <h5>Recent Searches:</h5>
-    <ul id="searchHistory" class="search-history"></ul>
-  </div>
+    <!-- Map Section -->
+    <section id="mapSection" class="card d-none">
+      <h3 class="text-center">Map Location</h3>
+      <div id="map" style="max-width: 800px; margin: 0 auto;"></div>
+    </section>
 
-  <!-- Add to Favorites Button -->
-  <div class="d-flex align-items-center mb-4">
-    <button id="addFavoriteBtn" class="btn btn-warning d-none me-3">Add to Favorites</button>
-    <form method="POST" action="{{ url_for('add_favorite') }}" style="display: none;" id="favoritesForm">
-      <input type="hidden" name="favorite_city" id="favoriteCityInput" />
-    </form>
-  </div>
-
-  <!-- Toggle Buttons: Temperature Unit, Dark Mode, Auto Refresh -->
-  <div class="mb-3">
-    <button id="toggleUnitBtn" class="btn btn-outline-info">Toggle °C/°F (Current: {{ temp_unit }})</button>
-    <button id="toggleDarkModeBtn" class="btn btn-outline-dark ms-2">Toggle Dark Mode</button>
-    <button id="toggleAutoRefreshBtn" class="btn btn-outline-primary ms-2">Enable Auto Refresh</button>
-  </div>
-
-  <!-- Weather Result -->
-  <div id="weatherResult" class="alert d-none" style="min-height: 50px;">
-    <img id="weatherIcon" src="" alt="Weather Icon" style="display: none; vertical-align: middle; margin-right: 10px;" />
-    <span id="weatherText"></span>
-  </div>
-
-  <!-- Detailed Weather Metrics -->
-  <div id="weatherDetails" class="mb-3 d-none">
-    <p><strong>Humidity:</strong> <span id="humidity"></span>%</p>
-    <p><strong>Wind Speed:</strong> <span id="windSpeed"></span> m/s</p>
-    <p><strong>Pressure:</strong> <span id="pressure"></span> hPa</p>
-  </div>
-
-  <!-- Share Weather Button -->
-  <div class="mb-3">
-    <button id="shareWeatherBtn" class="btn btn-outline-success d-none">Share Weather</button>
-  </div>
-
-  <!-- Sunrise and Sunset Times -->
-  <div id="sunTimes" class="mt-3">
-    <p><strong>Sunrise:</strong> <span id="sunriseTime"></span></p>
-    <p><strong>Sunset:</strong> <span id="sunsetTime"></span></p>
-  </div>
-
-  <!-- Map Container (Hidden until a location is available) -->
-  <div id="map" class="d-none"></div>
-
-  <hr />
-
-  <!-- 5-Day Forecast Chart -->
-  <div id="forecastSection" style="display:none; margin-bottom:20px; width: 400px; height: 220px;">
-    <h3 class="mb-3">5-Day Forecast</h3>
-    <canvas id="forecastChart" width="400" height="200" style="width: 400px; height: 200px;"></canvas>
-  </div>
-
-  <hr/>
-
-  <!-- Real-Time Chat Section -->
-  <div class="chat-section">
-    <h2 class="mb-3">Simple Chat</h2>
-    <div id="chatMessages" class="chat-messages mb-3 p-2" style="border: 1px solid #ddd; max-height: 200px; overflow-y: auto; border-radius: 5px;"></div>
-    <div class="input-group" style="max-width: 400px;">
-      <input type="text" id="chatInput" class="form-control" placeholder="Enter chat message..." />
-      <button id="sendChatBtn" class="btn btn-success">Send</button>
-    </div>
+    <!-- Chat Section -->
+    <section id="chatSection" class="chat-section">
+      <h3 class="text-center">Simple Chat</h3>
+      <div id="chatMessages" class="chat-messages"></div>
+      <div class="input-group mt-3">
+        <input type="text" id="chatInput" class="form-control" placeholder="Enter chat message..." />
+        <button id="sendChatBtn" class="btn btn-success">Send</button>
+      </div>
+    </section>
   </div>
 
   <!-- Toast Notification -->
@@ -250,9 +308,14 @@
     </div>
   </div>
 
-  <!-- Load Leaflet JS from cdnjs (no SRI attribute) -->
+  <!-- Footer -->
+  <footer>
+    <p>&copy; 2025 Weather Hub. All rights reserved.</p>
+  </footer>
+
+  <!-- Load External JS Libraries: Bootstrap Bundle, Leaflet, Chart.js, Socket.IO -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" crossorigin="anonymous"></script>
-  <!-- Load Chart.js and Socket.IO -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 
@@ -260,11 +323,11 @@
     document.addEventListener("DOMContentLoaded", function () {
       let tempUnit = "{{ temp_unit }}";
       const bodyEl = document.body;
-      let lastWeatherData = null;  // Latest weather data for sharing and map
-      let lastCoordinates = null;  // Fallback coordinates from geolocation
+      let lastWeatherData = null;
+      let lastCoordinates = null;
       let autoRefreshEnabled = false;
       let autoRefreshInterval = null;
-      let map; // Leaflet map
+      let map; // Global Leaflet map instance
 
       // Apply dark mode if enabled in localStorage
       if (localStorage.getItem("darkMode") === "enabled") {
@@ -273,6 +336,7 @@
 
       const socket = io();
 
+      // Element references
       const chatMessages = document.getElementById("chatMessages");
       const chatInput = document.getElementById("chatInput");
       const sendChatBtn = document.getElementById("sendChatBtn");
@@ -289,7 +353,6 @@
       const favoritesList = document.getElementById("favoritesList");
       const searchHistoryList = document.getElementById("searchHistory");
       const shareWeatherBtn = document.getElementById("shareWeatherBtn");
-
       const weatherResult = document.getElementById("weatherResult");
       const weatherText = document.getElementById("weatherText");
       const weatherIcon = document.getElementById("weatherIcon");
@@ -305,13 +368,13 @@
       const toastEl = document.getElementById("liveToast");
       const loadingSpinner = document.getElementById("loadingSpinner");
       const mapContainer = document.getElementById("map");
+      const mapSection = document.getElementById("mapSection");
 
       let forecastChart;
       let typingTimeout;
 
       /*** Socket.IO Chat Logic ***/
-      socket.on("connect", () => console.log(`Connected to server with SID: ${socket.id}`));
-      socket.on("connect_error", error => console.error("Connection Error:", error));
+      socket.on("connect", () => console.log(`Connected: ${socket.id}`));
       socket.on("chat_message", ({ text, timestamp, sender }) => {
         appendMessage(text, timestamp, sender === socket.id ? "You" : sender);
       });
@@ -327,9 +390,7 @@
       chatInput.addEventListener("input", () => {
         socket.emit("typing", { typing: true });
         clearTimeout(typingTimeout);
-        typingTimeout = setTimeout(() => {
-          socket.emit("typing", { typing: false });
-        }, 2000);
+        typingTimeout = setTimeout(() => { socket.emit("typing", { typing: false }); }, 2000);
       });
       function appendMessage(text, timestamp, sender) {
         if (!text || !timestamp) return;
@@ -342,15 +403,14 @@
       function formatTimestamp(timestamp) {
         try {
           const date = new Date(timestamp);
-          if (isNaN(date.getTime())) throw new Error("Invalid date");
-          return date.toLocaleTimeString();
-        } catch (error) {
-          console.error("Invalid timestamp:", timestamp, error);
+          return isNaN(date.getTime()) ? "Invalid Date" : date.toLocaleTimeString();
+        } catch (err) {
+          console.error(err);
           return "Invalid Date";
         }
       }
 
-      /*** Weather and Forecast Fetching ***/
+      /*** Weather & Forecast Fetching ***/
       async function fetchWeather() {
         const city = cityInput.value.trim();
         if (!city) {
@@ -371,7 +431,6 @@
             shareWeatherBtn.classList.remove("d-none");
             addSearchHistory(city);
             await fetchForecast(data.city);
-            // Use coordinates from API if available; otherwise, use fallback from detect location.
             if (data.lat && data.lon) {
               displayMap(data.lat, data.lon);
             } else if (lastCoordinates) {
@@ -387,10 +446,7 @@
         }
       }
       async function fetchForecast(city) {
-        if (!city) {
-          console.error("Invalid city for forecast request");
-          return;
-        }
+        if (!city) return;
         try {
           const response = await fetch(`/api/forecast?city=${encodeURIComponent(city)}`);
           const data = await response.json();
@@ -417,7 +473,7 @@
         if (data.sunset) sunsetTime.textContent = formatTimestamp(data.sunset);
         weatherResult.classList.remove("d-none");
 
-        // Change background based on weather description.
+        // Change background based on weather description
         if (data.weather_info.toLowerCase().includes("sunny")) {
           bodyEl.className = "sunny-bg";
         } else if (data.weather_info.toLowerCase().includes("rain")) {
@@ -431,9 +487,7 @@
       function displayForecast(forecast) {
         const labels = forecast.map(item => item.date);
         const temps = forecast.map(item => item.temp);
-        if (forecastChart) {
-          forecastChart.destroy();
-        }
+        if (forecastChart) forecastChart.destroy();
         forecastChart = new Chart(forecastChartCanvas, {
           type: "line",
           data: {
@@ -448,16 +502,18 @@
           },
           options: { responsive: true, maintainAspectRatio: false },
         });
-        forecastSection.style.display = "block";
+        forecastSection.classList.remove("d-none");
       }
       function clearWeatherDisplay() {
         weatherResult.classList.add("d-none");
-        forecastSection.style.display = "none";
+        forecastSection.classList.add("d-none");
         weatherDetails.classList.add("d-none");
         sunriseTime.textContent = "";
         sunsetTime.textContent = "";
         shareWeatherBtn.classList.add("d-none");
         mapContainer.classList.add("d-none");
+        const mapSection = document.getElementById("mapSection");
+        if (mapSection) { mapSection.classList.add("d-none"); }
         if (map) {
           map.remove();
           map = null;
@@ -467,12 +523,24 @@
         weatherResult.textContent = `Error: ${message}`;
         weatherResult.classList.remove("d-none");
       }
+      // Define showToast using Bootstrap Toast
       function showToast(message) {
+        const toastEl = document.getElementById("liveToast");
+        const toastBody = document.getElementById("toastBody");
+        if (!toastEl || !toastBody) {
+          console.warn("Toast element not found.");
+          return;
+        }
         toastBody.textContent = message;
         new bootstrap.Toast(toastEl).show();
       }
       function showSpinner(show) {
-        loadingSpinner.style.display = show ? "flex" : "none";
+        const spinner = document.getElementById("loadingSpinner");
+        if (!spinner) {
+          console.warn("Spinner element not found.");
+          return;
+        }
+        spinner.style.display = show ? "flex" : "none";
       }
       function enableAddToFavorites(city) {
         if (city) {
@@ -544,15 +612,13 @@
         let history = JSON.parse(localStorage.getItem("searchHistory")) || [];
         if (!history.includes(city)) {
           history.push(city);
-          if (history.length > 5) {
-            history = history.slice(-5);
-          }
+          if (history.length > 5) history = history.slice(-5);
           localStorage.setItem("searchHistory", JSON.stringify(history));
           loadSearchHistory();
         }
       }
 
-      /*** Autocomplete for City Input using GeoDB Cities API ***/
+      /*** Autocomplete for City Input using GeoDB API ***/
       cityInput.addEventListener("input", function () {
         const query = cityInput.value.trim();
         autocompleteSuggestions.innerHTML = "";
@@ -588,16 +654,11 @@
           });
       });
 
-      /*** Dark Mode Toggle with Persistence ***/
+      /*** Dark Mode Toggle ***/
       toggleDarkModeBtn.addEventListener("click", () => {
         bodyEl.classList.toggle("dark-mode");
-        if (bodyEl.classList.contains("dark-mode")) {
-          localStorage.setItem("darkMode", "enabled");
-          showToast("Dark mode enabled");
-        } else {
-          localStorage.setItem("darkMode", "disabled");
-          showToast("Dark mode disabled");
-        }
+        localStorage.setItem("darkMode", bodyEl.classList.contains("dark-mode") ? "enabled" : "disabled");
+        showToast(bodyEl.classList.contains("dark-mode") ? "Dark mode enabled" : "Dark mode disabled");
       });
 
       /*** Auto Refresh Toggle ***/
@@ -637,16 +698,22 @@
           navigator.clipboard.writeText(shareText).then(() => {
             showToast("Weather data copied to clipboard!");
           }, (err) => {
-            console.error("Could not copy text: ", err);
+            console.error("Could not copy text:", err);
             showToast("Could not copy weather data.");
           });
         }
       });
 
-      /*** Map Integration using Leaflet ***/
+      /*** Map Integration using the Provided Implementation ***/
       function displayMap(lat, lon) {
+        // Reveal the map container and its parent section
         mapContainer.classList.remove("d-none");
+        mapContainer.style.display = "block";
+        const mapSection = document.getElementById("mapSection");
+        if (mapSection) { mapSection.classList.remove("d-none"); }
+        // Remove any previous map instance
         if (map) { map.remove(); }
+        // Create the Leaflet map and set its view
         map = L.map('map').setView([lat, lon], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 19,
@@ -655,6 +722,8 @@
         L.marker([lat, lon]).addTo(map)
           .bindPopup(`Location: ${lastWeatherData ? lastWeatherData.city : ''}`)
           .openPopup();
+        // Use a short delay to force the map to recalculate its size
+        setTimeout(() => { map.invalidateSize(); }, 300);
       }
 
       /*** Event Listeners ***/
@@ -664,7 +733,6 @@
           navigator.geolocation.getCurrentPosition(async (position) => {
             const lat = position.coords.latitude;
             const lon = position.coords.longitude;
-            // Store the coordinates as a fallback
             lastCoordinates = { lat, lon };
             try {
               const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
@@ -673,7 +741,6 @@
               if (detectedCity) {
                 cityInput.value = detectedCity;
                 showToast("Location detected: " + detectedCity);
-                // Call fetchWeather; if API doesn't return coordinates, fallback to lastCoordinates will be used.
                 fetchWeather();
               } else {
                 showToast("Unable to detect city from your location.");
@@ -697,4 +764,6 @@
       loadSearchHistory();
     });
   </script>
+</body>
+</html>
 {% endblock %}
