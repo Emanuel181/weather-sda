@@ -5,16 +5,82 @@
 {% endblock %}
 
 {% block content %}
+  <style>
+    /* Background themes based on weather condition */
+    .sunny-bg { background: linear-gradient(135deg, #fceabb, #f8b500); }
+    .cloudy-bg { background: linear-gradient(135deg, #bdc3c7, #2c3e50); }
+    .rainy-bg { background: linear-gradient(135deg, #a1c4fd, #c2e9fb); }
+    .default-bg { background: #f5f5f5; }
+
+    /* Loading Spinner Overlay */
+    .spinner-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 2000;
+      display: none;
+    }
+    .spinner {
+      border: 8px solid #f3f3f3;
+      border-top: 8px solid #3498db;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* Favorites list styling */
+    .favorites-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-wrap: wrap;
+    }
+    .favorites-list li {
+      margin: 5px;
+      padding: 5px 10px;
+      background: #eee;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+  </style>
+
+  <!-- Loading Spinner Overlay -->
+  <div id="loadingSpinner" class="spinner-overlay">
+    <div class="spinner"></div>
+  </div>
+
   <h1 class="mb-4">Check the Weather (No Refresh)</h1>
 
-  <!-- Input group with manual entry, Get Weather, and Detect Location buttons -->
+  <!-- Input group with manual entry, Voice Input, Get Weather, and Detect Location buttons -->
   <div class="d-flex mb-3" style="max-width: 400px;">
     <input type="text" id="cityInput" class="form-control animate__animated animate__bounceInLeft" placeholder="Enter city name" />
+    <!-- Voice input button -->
+    <button id="voiceInputBtn" class="btn btn-info ms-2" title="Speak city name">
+      🎤
+    </button>
     <button id="getWeatherBtn" class="btn btn-primary animate__animated animate__bounceInRight ms-2">Get Weather</button>
     <button id="detectLocationBtn" class="btn btn-secondary ms-2">Detect Location</button>
   </div>
 
-  <!-- Add to Favorites Button -->
+  <!-- Favorites List Section -->
+  <div class="mb-4">
+    <h5>Favorites:</h5>
+    <ul id="favoritesList" class="favorites-list"></ul>
+  </div>
+
+  <!-- Add to Favorites Button (for manual addition) -->
   <div class="d-flex align-items-center mb-4">
     <button id="addFavoriteBtn" class="btn btn-warning d-none me-3">Add to Favorites</button>
     <form method="POST" action="{{ url_for('add_favorite') }}" style="display: none;" id="favoritesForm">
@@ -29,6 +95,13 @@
   <div id="weatherResult" class="alert d-none" style="min-height: 50px;">
     <img id="weatherIcon" src="" alt="Weather Icon" style="display: none; vertical-align: middle; margin-right: 10px;" />
     <span id="weatherText"></span>
+  </div>
+
+  <!-- Detailed Weather Metrics -->
+  <div id="weatherDetails" class="mb-3 d-none">
+    <p><strong>Humidity:</strong> <span id="humidity"></span>%</p>
+    <p><strong>Wind Speed:</strong> <span id="windSpeed"></span> m/s</p>
+    <p><strong>Pressure:</strong> <span id="pressure"></span> hPa</p>
   </div>
 
   <!-- Sunrise and Sunset -->
@@ -69,228 +142,304 @@
     </div>
   </div>
 
+  <!-- Socket.IO client, Chart.js, and custom scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 
-<!-- Socket.IO client, Chart.js, and custom scripts -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      let tempUnit = "{{ temp_unit }}";
+      const bodyEl = document.body;
 
+      const socket = io();
 
-<script>
-  document.addEventListener("DOMContentLoaded", function () {
-    let tempUnit = "{{ temp_unit }}";
+      const chatMessages = document.getElementById("chatMessages");
+      const chatInput = document.getElementById("chatInput");
+      const sendChatBtn = document.getElementById("sendChatBtn");
+      const cityInput = document.getElementById("cityInput");
+      const voiceInputBtn = document.getElementById("voiceInputBtn");
+      const getWeatherBtn = document.getElementById("getWeatherBtn");
+      const detectLocationBtn = document.getElementById("detectLocationBtn");
+      const toggleUnitBtn = document.getElementById("toggleUnitBtn");
+      const addFavoriteBtn = document.getElementById("addFavoriteBtn");
+      const favoritesForm = document.getElementById("favoritesForm");
+      const favoriteCityInput = document.getElementById("favoriteCityInput");
+      const favoritesList = document.getElementById("favoritesList");
 
-    const socket = io();
+      const weatherResult = document.getElementById("weatherResult");
+      const weatherText = document.getElementById("weatherText");
+      const weatherIcon = document.getElementById("weatherIcon");
+      const weatherDetails = document.getElementById("weatherDetails");
+      const humidityEl = document.getElementById("humidity");
+      const windSpeedEl = document.getElementById("windSpeed");
+      const pressureEl = document.getElementById("pressure");
+      const sunriseTime = document.getElementById("sunriseTime");
+      const sunsetTime = document.getElementById("sunsetTime");
+      const forecastSection = document.getElementById("forecastSection");
+      const forecastChartCanvas = document.getElementById("forecastChart");
+      const toastBody = document.getElementById("toastBody");
+      const toastEl = document.getElementById("liveToast");
+      const loadingSpinner = document.getElementById("loadingSpinner");
 
-    const sentMessages = new Set();
+      let forecastChart;
+      let typingTimeout;
 
-    const chatMessages = document.getElementById("chatMessages");
-    const chatInput = document.getElementById("chatInput");
-    const sendChatBtn = document.getElementById("sendChatBtn");
-    const typingIndicator = document.getElementById("typingIndicator");
-    const cityInput = document.getElementById("cityInput");
-    const getWeatherBtn = document.getElementById("getWeatherBtn");
-    const detectLocationBtn = document.getElementById("detectLocationBtn");
-    const toggleUnitBtn = document.getElementById("toggleUnitBtn");
-    const addFavoriteBtn = document.getElementById("addFavoriteBtn");
-    const favoritesForm = document.getElementById("favoritesForm");
-    const favoriteCityInput = document.getElementById("favoriteCityInput");
-    const weatherResult = document.getElementById("weatherResult");
-    const weatherText = document.getElementById("weatherText");
-    const weatherIcon = document.getElementById("weatherIcon");
-    const sunriseTime = document.getElementById("sunriseTime");
-    const sunsetTime = document.getElementById("sunsetTime");
-    const forecastSection = document.getElementById("forecastSection");
-    const forecastChartCanvas = document.getElementById("forecastChart");
-    const toastBody = document.getElementById("toastBody");
-    const toastEl = document.getElementById("liveToast");
-
-    let forecastChart;
-    let typingTimeout;
-
-    socket.on("connect", () => console.log(`Connected to server with SID: ${socket.id}`));
-    socket.on("connect_error", (error) => console.error("Connection Error:", error));
-    // Listen for incoming chat messages
-    socket.on("chat_message", ({ text, timestamp, sender }) => {
-        appendMessage(text, timestamp, sender === socket.id ? "You" : sender);
-    });
-
-    // Listen for typing events
-    socket.on("typing", ({ typing, sender }) => {
-        if (sender === socket.id) return; // Ignore self-typing events
-        typingIndicator.textContent = typing ? `${sender} is typing...` : "";
-    });
-
-    // Emit a chat message
-    sendChatBtn.addEventListener("click", () => {
-        const message = chatInput.value.trim();
-        if (message) {
-            const timestamp = new Date().toISOString();
-            socket.emit("chat_message", { text: message, timestamp });
-            chatInput.value = ""; // Clear the input box
-        }
-    });
-
-    // Emit typing events
-    chatInput.addEventListener("input", () => {
-        socket.emit("typing", { typing: true });
-
-        clearTimeout(typingTimeout);
-        typingTimeout = setTimeout(() => {
-            socket.emit("typing", { typing: false });
-        }, 2000); // Stop typing after 2 seconds of no input
-    });
-
-    // Utility: Append a message to the chat box
-    function appendMessage(text, timestamp, sender) {
-        if (!text || !timestamp) return;
-
-        const formattedTime = new Date(timestamp).toLocaleTimeString();
-        const messageElement = document.createElement("p");
-        messageElement.textContent = `[${formattedTime}] ${sender}: ${text}`;
-        chatMessages.appendChild(messageElement);
-
-        // Auto-scroll to the bottom
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
-
-  // Utility: Format timestamp into readable time
-  function formatTimestamp(timestamp) {
-    try {
-      const date = new Date(timestamp);
-      if (isNaN(date.getTime())) throw new Error("Invalid date");
-      return date.toLocaleTimeString();
-    } catch (error) {
-      console.error("Invalid timestamp:", timestamp, error);
-      return "Invalid Date";
-    }
-  }
-
-    async function fetchWeather() {
-      const city = cityInput.value.trim();
-      if (!city) {
-        showToast("Please enter a valid city.");
-        return;
-      }
-
-      clearWeatherDisplay();
-      setButtonLoading(getWeatherBtn, true);
-
-      try {
-        const response = await fetch(`/api/weather?city=${encodeURIComponent(city)}`);
-        const data = await response.json();
-
-        if (data.error) {
-          displayWeatherError(data.error);
-        } else {
-          displayWeatherData(data);
-          enableAddToFavorites(data.city);
-          await fetchForecast(data.city);
-          showToast("Weather data fetched successfully!");
-        }
-      } catch (error) {
-        console.error("Request failed:", error);
-        displayWeatherError(error.message || "Failed to fetch weather data.");
-      } finally {
-        setButtonLoading(getWeatherBtn, false);
-      }
-    }
-
-    async function fetchForecast(city) {
-      if (!city) {
-        console.error("Invalid city for forecast request");
-        return;
-      }
-
-      try {
-        const response = await fetch(`/api/forecast?city=${encodeURIComponent(city)}`);
-        const data = await response.json();
-
-        if (data.forecast) {
-          displayForecast(data.forecast);
-        }
-      } catch (error) {
-        console.error("Forecast fetch failed:", error);
-      }
-    }
-
-    function displayWeatherData(data) {
-      weatherText.innerHTML = `<strong>Weather for ${data.city}:</strong> ${data.weather_info}`;
-      if (data.icon) {
-        weatherIcon.src = `https://openweathermap.org/img/wn/${data.icon}@2x.png`;
-        weatherIcon.style.display = "inline";
-      }
-      if (data.sunrise) sunriseTime.textContent = formatTimestamp(data.sunrise);
-      if (data.sunset) sunsetTime.textContent = formatTimestamp(data.sunset);
-
-      weatherResult.classList.remove("d-none");
-    }
-
-    function displayForecast(forecast) {
-      const labels = forecast.map((item) => item.date);
-      const temps = forecast.map((item) => item.temp);
-
-      if (forecastChart) {
-        forecastChart.destroy();
-      }
-
-      forecastChart = new Chart(forecastChartCanvas, {
-        type: "line",
-        data: {
-          labels,
-          datasets: [
-            {
-              label: `Temperature (${tempUnit === "imperial" ? "°F" : "°C"})`,
-              data: temps,
-              borderColor: "rgba(54, 162, 235, 1)",
-              backgroundColor: "rgba(54, 162, 235, 0.2)",
-              fill: true,
-            },
-          ],
-        },
-        options: { responsive: true, maintainAspectRatio: false },
+      /*** Socket.IO Chat Logic ***/
+      socket.on("connect", () => console.log(`Connected to server with SID: ${socket.id}`));
+      socket.on("connect_error", (error) => console.error("Connection Error:", error));
+      socket.on("chat_message", ({ text, timestamp, sender }) => {
+          appendMessage(text, timestamp, sender === socket.id ? "You" : sender);
+      });
+      socket.on("typing", ({ typing, sender }) => {
+          // Optionally implement a typing indicator.
       });
 
-      forecastSection.style.display = "block";
-    }
-
-    function clearWeatherDisplay() {
-      weatherResult.classList.add("d-none");
-      forecastSection.style.display = "none";
-      sunriseTime.textContent = "";
-      sunsetTime.textContent = "";
-    }
-
-    function displayWeatherError(message) {
-      weatherResult.textContent = `Error: ${message}`;
-      weatherResult.classList.remove("d-none");
-    }
-
-    function setButtonLoading(button, isLoading) {
-      button.textContent = isLoading ? "Loading..." : button.getAttribute("data-original-text") || "Get Weather";
-      button.disabled = isLoading;
-    }
-
-    function showToast(message) {
-      toastBody.textContent = message;
-      new bootstrap.Toast(toastEl).show();
-    }
-
-    function enableAddToFavorites(city) {
-      if (city) {
-        favoriteCityInput.value = city;
-        addFavoriteBtn.classList.remove("d-none");
-        addFavoriteBtn.onclick = () => favoritesForm.submit();
-      } else {
-        addFavoriteBtn.classList.add("d-none");
+      sendChatBtn.addEventListener("click", () => {
+          const message = chatInput.value.trim();
+          if (message) {
+              const timestamp = new Date().toISOString();
+              socket.emit("chat_message", { text: message, timestamp });
+              chatInput.value = "";
+          }
+      });
+      chatInput.addEventListener("input", () => {
+          socket.emit("typing", { typing: true });
+          clearTimeout(typingTimeout);
+          typingTimeout = setTimeout(() => {
+              socket.emit("typing", { typing: false });
+          }, 2000);
+      });
+      function appendMessage(text, timestamp, sender) {
+          if (!text || !timestamp) return;
+          const formattedTime = new Date(timestamp).toLocaleTimeString();
+          const messageElement = document.createElement("p");
+          messageElement.textContent = `[${formattedTime}] ${sender}: ${text}`;
+          chatMessages.appendChild(messageElement);
+          chatMessages.scrollTop = chatMessages.scrollHeight;
       }
-    }
+      function formatTimestamp(timestamp) {
+        try {
+          const date = new Date(timestamp);
+          if (isNaN(date.getTime())) throw new Error("Invalid date");
+          return date.toLocaleTimeString();
+        } catch (error) {
+          console.error("Invalid timestamp:", timestamp, error);
+          return "Invalid Date";
+        }
+      }
 
-    getWeatherBtn.addEventListener("click", fetchWeather);
-    detectLocationBtn.addEventListener("click", fetchWeather);
-    toggleUnitBtn.addEventListener("click", fetchWeather);
-  });
-</script>
+      /*** Weather and Forecast Fetching ***/
+      async function fetchWeather() {
+        const city = cityInput.value.trim();
+        if (!city) {
+          showToast("Please enter a valid city.");
+          return;
+        }
 
+        clearWeatherDisplay();
+        showSpinner(true);
+        try {
+          const response = await fetch(`/api/weather?city=${encodeURIComponent(city)}`);
+          const data = await response.json();
+          if (data.error) {
+            displayWeatherError(data.error);
+          } else {
+            displayWeatherData(data);
+            enableAddToFavorites(data.city);
+            await fetchForecast(data.city);
+            showToast("Weather data fetched successfully!");
+          }
+        } catch (error) {
+          console.error("Request failed:", error);
+          displayWeatherError(error.message || "Failed to fetch weather data.");
+        } finally {
+          showSpinner(false);
+        }
+      }
+      async function fetchForecast(city) {
+        if (!city) {
+          console.error("Invalid city for forecast request");
+          return;
+        }
+        try {
+          const response = await fetch(`/api/forecast?city=${encodeURIComponent(city)}`);
+          const data = await response.json();
+          if (data.forecast) {
+            displayForecast(data.forecast);
+          }
+        } catch (error) {
+          console.error("Forecast fetch failed:", error);
+        }
+      }
+      function displayWeatherData(data) {
+        // Main weather text and icon
+        weatherText.innerHTML = `<strong>Weather for ${data.city}:</strong> ${data.weather_info}`;
+        if (data.icon) {
+          weatherIcon.src = `https://openweathermap.org/img/wn/${data.icon}@2x.png`;
+          weatherIcon.style.display = "inline";
+        }
+        // Detailed metrics (assuming API returns these values)
+        if (data.humidity != null) {
+          humidityEl.textContent = data.humidity;
+          windSpeedEl.textContent = data.wind_speed;
+          pressureEl.textContent = data.pressure;
+          weatherDetails.classList.remove("d-none");
+        }
+        if (data.sunrise) sunriseTime.textContent = formatTimestamp(data.sunrise);
+        if (data.sunset) sunsetTime.textContent = formatTimestamp(data.sunset);
+        weatherResult.classList.remove("d-none");
 
+        // Change background theme based on weather condition.
+        // For demonstration, we check if the weather_info string contains certain keywords.
+        if (data.weather_info.toLowerCase().includes("sunny")) {
+          bodyEl.className = "sunny-bg";
+        } else if (data.weather_info.toLowerCase().includes("rain")) {
+          bodyEl.className = "rainy-bg";
+        } else if (data.weather_info.toLowerCase().includes("cloud")) {
+          bodyEl.className = "cloudy-bg";
+        } else {
+          bodyEl.className = "default-bg";
+        }
+      }
+      function displayForecast(forecast) {
+        const labels = forecast.map((item) => item.date);
+        const temps = forecast.map((item) => item.temp);
+        if (forecastChart) {
+          forecastChart.destroy();
+        }
+        forecastChart = new Chart(forecastChartCanvas, {
+          type: "line",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: `Temperature (${tempUnit === "imperial" ? "°F" : "°C"})`,
+                data: temps,
+                borderColor: "rgba(54, 162, 235, 1)",
+                backgroundColor: "rgba(54, 162, 235, 0.2)",
+                fill: true,
+              },
+            ],
+          },
+          options: { responsive: true, maintainAspectRatio: false },
+        });
+        forecastSection.style.display = "block";
+      }
+      function clearWeatherDisplay() {
+        weatherResult.classList.add("d-none");
+        forecastSection.style.display = "none";
+        weatherDetails.classList.add("d-none");
+        sunriseTime.textContent = "";
+        sunsetTime.textContent = "";
+      }
+      function displayWeatherError(message) {
+        weatherResult.textContent = `Error: ${message}`;
+        weatherResult.classList.remove("d-none");
+      }
+      function setButtonLoading(button, isLoading) {
+        button.textContent = isLoading ? "Loading..." : button.getAttribute("data-original-text") || "Get Weather";
+        button.disabled = isLoading;
+      }
+      function showToast(message) {
+        toastBody.textContent = message;
+        new bootstrap.Toast(toastEl).show();
+      }
+      function showSpinner(show) {
+        loadingSpinner.style.display = show ? "flex" : "none";
+      }
+      function enableAddToFavorites(city) {
+        if (city) {
+          favoriteCityInput.value = city;
+          addFavoriteBtn.classList.remove("d-none");
+          addFavoriteBtn.onclick = () => {
+            saveFavorite(city);
+            favoritesForm.submit();
+          };
+        } else {
+          addFavoriteBtn.classList.add("d-none");
+        }
+      }
 
+      /*** Favorites List Handling using localStorage ***/
+      function loadFavorites() {
+        const favorites = JSON.parse(localStorage.getItem("favorites")) || [];
+        favoritesList.innerHTML = "";
+        favorites.forEach((fav) => {
+          const li = document.createElement("li");
+          li.textContent = fav;
+          li.addEventListener("click", () => {
+            cityInput.value = fav;
+            fetchWeather();
+          });
+          favoritesList.appendChild(li);
+        });
+      }
+      function saveFavorite(city) {
+        let favorites = JSON.parse(localStorage.getItem("favorites")) || [];
+        if (!favorites.includes(city)) {
+          favorites.push(city);
+          localStorage.setItem("favorites", JSON.stringify(favorites));
+          loadFavorites();
+          showToast(`Saved ${city} as a favorite!`);
+        }
+      }
+
+      /*** Voice Input for City Search ***/
+      voiceInputBtn.addEventListener("click", () => {
+        // Check for SpeechRecognition support
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+          showToast("Your browser does not support voice recognition.");
+          return;
+        }
+        const recognition = new SpeechRecognition();
+        recognition.lang = "en-US";
+        recognition.start();
+        recognition.onresult = (event) => {
+          const transcript = event.results[0][0].transcript;
+          cityInput.value = transcript;
+          showToast("You said: " + transcript);
+        };
+        recognition.onerror = (err) => {
+          console.error("Voice recognition error:", err);
+          showToast("Voice recognition error: " + err.error);
+        };
+      });
+
+      /*** Event Listeners ***/
+      getWeatherBtn.addEventListener("click", fetchWeather);
+      detectLocationBtn.addEventListener("click", () => {
+        if ("geolocation" in navigator) {
+          navigator.geolocation.getCurrentPosition(async (position) => {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            try {
+              const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
+              const data = await response.json();
+              const detectedCity = data.address.city || data.address.town || data.address.village || data.address.county;
+              if (detectedCity) {
+                cityInput.value = detectedCity;
+                showToast("Location detected: " + detectedCity);
+                fetchWeather();
+              } else {
+                showToast("Unable to detect city from your location.");
+              }
+            } catch (error) {
+              console.error("Reverse geocoding failed:", error);
+              showToast("Reverse geocoding failed: " + error.message);
+            }
+          }, (error) => {
+            console.error("Error getting location:", error);
+            showToast("Error getting location: " + error.message);
+          });
+        } else {
+          showToast("Geolocation is not supported by your browser.");
+        }
+      });
+      toggleUnitBtn.addEventListener("click", fetchWeather);
+
+      // Load favorites from localStorage when the page loads.
+      loadFavorites();
+    });
+  </script>
 {% endblock %}
