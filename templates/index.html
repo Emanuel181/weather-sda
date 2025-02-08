@@ -239,13 +239,20 @@
         <p><strong>Humidity:</strong> <span id="humidity"></span>%</p>
         <p><strong>Wind Speed:</strong> <span id="windSpeed"></span> m/s</p>
         <p><strong>Pressure:</strong> <span id="pressure"></span> hPa</p>
+        <!-- New "Feels Like" line -->
+        <p><strong>Feels Like:</strong> <span id="feelsLike"></span></p>
       </div>
       <div id="sunTimes" class="mt-3 text-center">
         <p><strong>Sunrise:</strong> <span id="sunriseTime"></span></p>
         <p><strong>Sunset:</strong> <span id="sunsetTime"></span></p>
       </div>
+      <!-- New Local Time Display -->
+      <div id="localTimeContainer" class="mt-3 text-center d-none">
+        <p><strong>Local Time:</strong> <span id="localTime"></span></p>
+      </div>
       <div class="mt-3 text-center">
         <button id="shareWeatherBtn" class="btn btn-outline-success d-none">Share Weather</button>
+        <button id="downloadSnapshotBtn" class="btn btn-outline-info ms-2">Download Snapshot</button>
       </div>
     </section>
 
@@ -265,6 +272,11 @@
         <form method="POST" action="{{ url_for('add_favorite') }}" style="display: none;" id="favoritesForm">
           <input type="hidden" name="favorite_city" id="favoriteCityInput" />
         </form>
+      </div>
+      <!-- New Clear Buttons -->
+      <div class="text-center mt-3">
+        <button id="clearFavoritesBtn" class="btn btn-danger btn-sm">Clear Favorites</button>
+        <button id="clearSearchHistoryBtn" class="btn btn-danger btn-sm ms-2">Clear Search History</button>
       </div>
     </section>
 
@@ -317,11 +329,12 @@
     <p>&copy; 2025 Weather Hub. All rights reserved.</p>
   </footer>
 
-  <!-- Load External JS Libraries: Bootstrap Bundle, Leaflet, Chart.js, Socket.IO -->
+  <!-- Load External JS Libraries: Bootstrap Bundle, Leaflet, Chart.js, Socket.IO, html2canvas -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
   <script>
     document.addEventListener("DOMContentLoaded", function () {
@@ -332,6 +345,12 @@
       let autoRefreshEnabled = false;
       let autoRefreshInterval = null;
       let map; // Global Leaflet map instance
+
+      // Variables for the new Local Time feature
+      let cityTimezone = null;
+      let localTimeInterval = null;
+      const localTimeContainer = document.getElementById("localTimeContainer");
+      const localTimeEl = document.getElementById("localTime");
 
       // Apply dark mode if enabled in localStorage
       if (localStorage.getItem("darkMode") === "enabled") {
@@ -366,6 +385,7 @@
       const pressureEl = document.getElementById("pressure");
       const sunriseTime = document.getElementById("sunriseTime");
       const sunsetTime = document.getElementById("sunsetTime");
+      const feelsLikeEl = document.getElementById("feelsLike");
       const forecastSection = document.getElementById("forecastSection");
       const forecastChartCanvas = document.getElementById("forecastChart");
       const toastBody = document.getElementById("toastBody");
@@ -411,6 +431,15 @@
         } catch (err) {
           console.error(err);
           return "Invalid Date";
+        }
+      }
+
+      /*** Update Local Time for the Queried City ***/
+      function updateLocalTime() {
+        if (cityTimezone !== null) {
+          // Calculate local time using the timezone offset (in seconds)
+          const localTime = new Date(Date.now() + cityTimezone * 1000);
+          localTimeEl.textContent = localTime.toLocaleTimeString();
         }
       }
 
@@ -473,8 +502,24 @@
           pressureEl.textContent = data.pressure;
           weatherDetails.classList.remove("d-none");
         }
+        // Display "Feels Like" if available
+        if (data.feels_like != null) {
+          feelsLikeEl.textContent = data.feels_like;
+        }
         if (data.sunrise) sunriseTime.textContent = formatTimestamp(data.sunrise);
         if (data.sunset) sunsetTime.textContent = formatTimestamp(data.sunset);
+
+        // --- New Local Time Feature ---
+        if (data.timezone) {
+          cityTimezone = data.timezone;
+          localTimeContainer.classList.remove("d-none");
+          updateLocalTime();
+          if (localTimeInterval) clearInterval(localTimeInterval);
+          localTimeInterval = setInterval(updateLocalTime, 1000);
+        } else {
+          localTimeContainer.classList.add("d-none");
+        }
+
         weatherResult.classList.remove("d-none");
 
         // Change background based on weather description
@@ -658,6 +703,13 @@
           });
       });
 
+      // Allow Enter key to trigger weather search
+      cityInput.addEventListener("keyup", function(e) {
+        if (e.key === "Enter") {
+          fetchWeather();
+        }
+      });
+
       /*** Dark Mode Toggle ***/
       toggleDarkModeBtn.addEventListener("click", () => {
         bodyEl.classList.toggle("dark-mode");
@@ -706,6 +758,16 @@
             showToast("Could not copy weather data.");
           });
         }
+      });
+
+      /*** Download Snapshot Feature ***/
+      document.getElementById("downloadSnapshotBtn").addEventListener("click", function() {
+        html2canvas(document.getElementById("weatherSection")).then(canvas => {
+          const link = document.createElement("a");
+          link.download = "weather_snapshot.png";
+          link.href = canvas.toDataURL();
+          link.click();
+        });
       });
 
       /*** Map Integration using the Provided Implementation ***/
@@ -766,6 +828,44 @@
       // Load favorites and search history on page load.
       loadFavorites();
       loadSearchHistory();
+
+      // New: Clear Favorites & Search History Buttons
+      document.getElementById("clearFavoritesBtn").addEventListener("click", () => {
+        localStorage.removeItem("favorites");
+        loadFavorites();
+        showToast("Favorites cleared.");
+      });
+      document.getElementById("clearSearchHistoryBtn").addEventListener("click", () => {
+        localStorage.removeItem("searchHistory");
+        loadSearchHistory();
+        showToast("Search history cleared.");
+      });
+
+      // New: Auto-detect location on page load if no city is entered
+      if (!cityInput.value) {
+        // Delay slightly to let the page finish loading
+        setTimeout(() => {
+          if ("geolocation" in navigator) {
+            navigator.geolocation.getCurrentPosition(async (position) => {
+              const lat = position.coords.latitude;
+              const lon = position.coords.longitude;
+              lastCoordinates = { lat, lon };
+              try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
+                const data = await response.json();
+                const detectedCity = data.address.city || data.address.town || data.address.village || data.address.county;
+                if (detectedCity) {
+                  cityInput.value = detectedCity;
+                  showToast("Auto-detected your location: " + detectedCity);
+                  fetchWeather();
+                }
+              } catch (error) {
+                console.error("Auto-detect reverse geocoding failed:", error);
+              }
+            });
+          }
+        }, 500);
+      }
     });
   </script>
 </body>
