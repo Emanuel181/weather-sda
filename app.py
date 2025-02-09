@@ -250,7 +250,7 @@ def reverse_geocode():
 @app.route('/weather-news', methods=['GET'])
 def get_weather_news():
     query = "weather OR storm OR climate OR flood OR hurricane OR tornado OR snowfall"
-    url = f"https://newsapi.org/v2/everything?q={query}&language=en&sortBy=publishedAt&apiKey={"b2a9e9e95597438789e690dbc0418517"}"
+    url = f"https://newsapi.org/v2/everything?q={query}&language=en&sortBy=publishedAt&apiKey=b2a9e9e95597438789e690dbc0418517"
 
     response = requests.get(url)
     if response.status_code == 200:
