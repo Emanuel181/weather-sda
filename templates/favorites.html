@@ -11,26 +11,26 @@
   <!-- Search bar to filter favorite cities -->
   <div class="input-group mb-4" style="max-width: 400px; margin: auto;">
     <input type="text" id="searchFavorites" class="form-control" placeholder="Search favorite cities...">
-    <button class="btn btn-outline-secondary" onclick="window.resetSearch()">Clear</button>
+    <button class="btn btn-outline-secondary" id="resetSearch">Clear</button>
   </div>
 
   {% if favorites %}
-    <ul class="list-group animate__animated animate__fadeIn" id="favoritesList">
+    <ul class="list-group" id="favoritesList">
       {% for city in favorites %}
-        <li class="list-group-item d-flex justify-content-between align-items-center">
+        <li class="list-group-item d-flex justify-content-between align-items-center fade-in">
           <span>{{ city }}</span>
           <span class="badge bg-primary temp-badge" id="temp-{{ city | replace(' ', '-') }}">Loading...</span>
           <div>
-            <button class="btn btn-sm btn-success me-2" onclick="window.showForecast('{{ city }}')">5-Day Forecast</button>
-            <button class="btn btn-sm btn-info me-2" onclick="window.checkAirQuality('{{ city }}')">Check Air Quality</button>
-            <button class="btn btn-sm btn-secondary me-2" onclick="window.viewOnMap('{{ city }}')">View on Map</button>
-            <button class="btn btn-sm btn-danger" onclick="window.removeFavorite('{{ city }}')">Remove</button>
+            <button class="btn btn-sm btn-success me-2 forecast-btn" data-city="{{ city }}">5-Day Forecast</button>
+            <button class="btn btn-sm btn-info me-2 aqi-btn" data-city="{{ city }}">Check Air Quality</button>
+            <button class="btn btn-sm btn-secondary me-2 map-btn" data-city="{{ city }}">View on Map</button>
+            <button class="btn btn-sm btn-danger remove-btn" data-city="{{ city }}">Remove</button>
           </div>
         </li>
       {% endfor %}
     </ul>
   {% else %}
-    <p class="text-muted animate__animated animate__lightSpeedInLeft text-center">
+    <p class="text-muted text-center fade-in">
       No favorite cities yet. Try searching on the <a href="{{ url_for('index') }}">main page</a> and add some!
     </p>
   {% endif %}
@@ -45,7 +45,6 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <!-- Ensure the canvas has fixed dimensions -->
         <canvas id="dataChart" width="400" height="300" style="display: block; margin: 0 auto;"></canvas>
         <p id="modalContent" class="mt-3"></p>
       </div>
@@ -54,137 +53,99 @@
 </div>
 
 <!-- Include Socket.IO and Chart.js -->
-<script src="https://cdn/socket.io/4.5.4/socket.io.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script defer src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
   document.addEventListener("DOMContentLoaded", function () {
     const socket = io();
     const searchFavoritesInput = document.getElementById("searchFavorites");
     const favoritesList = document.getElementById("favoritesList");
 
-    // Global function: Reset search bar
-    window.resetSearch = function () {
-      searchFavoritesInput.value = "";
-      const items = favoritesList.querySelectorAll("li");
-      items.forEach(item => item.style.display = "flex");
-    };
-
+    // Optimize search function by reducing unnecessary reflows
     searchFavoritesInput.addEventListener("input", function () {
       const filter = searchFavoritesInput.value.toLowerCase();
-      const items = favoritesList.querySelectorAll("li");
-      items.forEach(item => {
-        const cityName = item.querySelector("span").textContent.toLowerCase();
-        item.style.display = cityName.includes(filter) ? "flex" : "none";
+      favoritesList.querySelectorAll("li").forEach(item => {
+        item.style.display = item.querySelector("span").textContent.toLowerCase().includes(filter) ? "flex" : "none";
       });
     });
 
-    // Listen for real-time temperature updates
-    socket.on("update_temperature", ({ city, temperature }) => {
-      const cityId = `temp-${city.replace(/\s+/g, '-')}`;
-      const tempBadge = document.getElementById(cityId);
-      if (tempBadge) {
-        tempBadge.textContent = `${temperature} °C`;
+    document.getElementById("resetSearch").addEventListener("click", function () {
+      searchFavoritesInput.value = "";
+      favoritesList.querySelectorAll("li").forEach(item => item.style.display = "flex");
+    });
+
+    // Use event delegation for buttons to optimize performance
+    document.body.addEventListener("click", async function (event) {
+      const target = event.target;
+      const city = target.dataset.city;
+
+      if (!city) return;
+
+      if (target.classList.contains("forecast-btn")) {
+        showForecast(city);
+      } else if (target.classList.contains("aqi-btn")) {
+        checkAirQuality(city);
+      } else if (target.classList.contains("map-btn")) {
+        window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(city)}`, "_blank");
+      } else if (target.classList.contains("remove-btn")) {
+        if (confirm(`Are you sure you want to remove ${city} from your favorites?`)) {
+          fetch(`/remove_favorite?city=${encodeURIComponent(city)}`, { method: "DELETE" })
+            .then(response => response.ok && target.closest("li").remove())
+            .catch(error => console.error("Error removing favorite:", error));
+        }
       }
     });
 
-    // Global function: Show 5-Day Forecast
-    window.showForecast = async function (city) {
+    socket.on("update_temperature", ({ city, temperature }) => {
+      const tempBadge = document.getElementById(`temp-${city.replace(/\s+/g, '-')}`);
+      if (tempBadge) tempBadge.textContent = `${temperature} °C`;
+    });
+
+    async function showForecast(city) {
       try {
         const resp = await fetch(`/api/forecast?city=${encodeURIComponent(city)}`);
         const data = await resp.json();
-        if (data.error || !data.forecast) {
-          alert("Could not fetch forecast data.");
-          return;
-        }
+        if (data.error || !data.forecast) return alert("Could not fetch forecast data.");
 
         const labels = data.forecast.map(item => item.date);
         const temps = data.forecast.map(item => item.temp);
 
-        // Get the canvas context and set fixed dimensions
-        const canvas = document.getElementById("dataChart");
-        // Ensure the canvas has fixed dimensions (in the element attributes or style)
-        canvas.width = 400;
-        canvas.height = 300;
-        const ctx = canvas.getContext("2d");
-
-        // Destroy any previous chart instance if exists
-        if (window.dataChartInstance) {
-          window.dataChartInstance.destroy();
-        }
+        const ctx = document.getElementById("dataChart").getContext("2d");
+        if (window.dataChartInstance) window.dataChartInstance.destroy();
         window.dataChartInstance = new Chart(ctx, {
           type: "line",
-          data: {
-            labels: labels,
-            datasets: [{
-              label: "Temperature (°C)",
-              data: temps,
-              borderColor: "rgba(75, 192, 192, 1)",
-              backgroundColor: "rgba(75, 192, 192, 0.2)",
-              fill: true
-            }]
-          },
-          options: {
-            responsive: false,
-            maintainAspectRatio: false,
-            scales: {
-              y: {
-                reverse: false, // Ensure the y-axis is not inverted
-                ticks: { beginAtZero: true }
-              }
-            }
-          }
+          data: { labels, datasets: [{ label: "Temperature (°C)", data: temps, borderColor: "rgba(75, 192, 192, 1)", backgroundColor: "rgba(75, 192, 192, 0.2)", fill: true }] },
+          options: { responsive: false, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
         });
 
-        const modal = new bootstrap.Modal(document.getElementById("dataModal"));
         document.getElementById("dataModalLabel").textContent = `5-Day Forecast for ${city}`;
         document.getElementById("modalContent").textContent = "";
-        canvas.style.display = "block";
-        modal.show();
+        new bootstrap.Modal(document.getElementById("dataModal")).show();
       } catch (error) {
         console.error("Error fetching forecast:", error);
       }
-    };
+    }
 
-    // Global function: Check Air Quality Index (AQI)
-    window.checkAirQuality = async function (city) {
+    async function checkAirQuality(city) {
       try {
         const resp = await fetch(`/api/aqi?city=${encodeURIComponent(city)}`);
         const data = await resp.json();
-        if (data.error || !data.aqi) {
-          alert("Could not fetch AQI data.");
-          return;
-        }
-        const modal = new bootstrap.Modal(document.getElementById("dataModal"));
+        if (data.error || !data.aqi) return alert("Could not fetch AQI data.");
+
         document.getElementById("dataModalLabel").textContent = `Air Quality Index for ${city}`;
         document.getElementById("modalContent").textContent = `AQI Level: ${data.aqi} - ${data.description}`;
         document.getElementById("dataChart").style.display = "none";
-        modal.show();
+        new bootstrap.Modal(document.getElementById("dataModal")).show();
       } catch (error) {
         console.error("Error fetching AQI:", error);
       }
-    };
-
-    // Global function: View on Map
-    window.viewOnMap = function (city) {
-      const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(city)}`;
-      window.open(mapUrl, "_blank");
-    };
-
-    // Global function: Remove Favorite
-    window.removeFavorite = function (city) {
-      if (confirm(`Are you sure you want to remove ${city} from your favorites?`)) {
-        fetch(`/remove_favorite?city=${encodeURIComponent(city)}`, { method: "DELETE" })
-          .then(response => {
-            if (response.ok) {
-              alert(`${city} removed from favorites.`);
-              location.reload();
-            } else {
-              alert("Failed to remove the city.");
-            }
-          })
-          .catch(error => console.error("Error removing favorite:", error));
-      }
-    };
+    }
   });
 </script>
+
+<style>
+  /* Optimize animations */
+  .fade-in { opacity: 0; transform: translateY(20px); animation: fadeIn 0.5s ease-out forwards; }
+  @keyframes fadeIn { to { opacity: 1; transform: translateY(0); } }
+</style>
 {% endblock %}

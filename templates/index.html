@@ -43,8 +43,11 @@
       background: var(--dark-bg);
       color: var(--dark-text);
     }
-    /* Header */
+    /* Sticky Header */
     header {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
       width: 100%;
       padding: 20px 40px;
       background: linear-gradient(135deg, #3498db, #2ecc71);
@@ -93,6 +96,10 @@
       box-shadow: 0 4px 8px rgba(0,0,0,0.1);
       padding: 20px;
       margin-bottom: 20px;
+      transition: transform var(--transition-speed);
+    }
+    .card:hover {
+      transform: translateY(-3px);
     }
     .card h3 { text-align: center; margin-top: 0; }
     /* Button Styles */
@@ -124,6 +131,11 @@
       background: transparent;
       border: 2px solid var(--text-color);
       color: var(--text-color);
+    }
+    .btn-outline-success, .btn-outline-info {
+      border: 2px solid #28a745;
+      background: transparent;
+      color: #28a745;
     }
     /* Spinner */
     .spinner-overlay {
@@ -171,6 +183,18 @@
       background: #fff;
       margin-bottom: 10px;
     }
+    .emoji-picker {
+      margin-top: 10px;
+    }
+    .emoji {
+      cursor: pointer;
+      font-size: 1.2rem;
+      margin: 0 5px;
+      transition: transform 0.2s;
+    }
+    .emoji:hover {
+      transform: scale(1.2);
+    }
     /* Footer */
     footer {
       text-align: center;
@@ -187,7 +211,7 @@
     /* Forecast Chart Wrapper with Fixed, Smaller Height */
     #forecastChartWrapper {
       position: relative;
-      height: 120px;  /* Fixed smaller height */
+      height: 120px;
       width: 100%;
       overflow: hidden;
     }
@@ -198,15 +222,24 @@
       width: 100% !important;
       height: 100% !important;
     }
+    /* Weather News Section */
+    #weatherNewsSection a {
+      text-decoration: none;
+      color: var(--primary-color);
+    }
+    #weatherNewsSection a:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
-  <!-- Header -->
+  <!-- Sticky Header -->
   <header>
     <h1>Weather Hub</h1>
     <nav>
       <a href="#weatherSection">Weather</a>
       <a href="#forecastSection">Forecast</a>
+      <a href="#newsSection">News</a>
       <a href="#chatSection">Chat</a>
       <a href="#mapSection">Map</a>
     </nav>
@@ -214,8 +247,8 @@
 
   <!-- Hero Section -->
   <section class="hero">
-    <h1 class="animate__animated animate__fadeInDown">Stay Updated with Real-Time Weather & Chat</h1>
-    <p class="animate__animated animate__fadeInUp">A complete solution to check weather, view forecasts, and chat live.</p>
+    <h1 class="animate__animated animate__fadeInDown">Stay Updated with Real-Time Weather, News & Chat</h1>
+    <p class="animate__animated animate__fadeInUp">A complete solution to check weather, view forecasts, read news, and chat live.</p>
   </section>
 
   <!-- Main Content -->
@@ -239,14 +272,13 @@
         <p><strong>Humidity:</strong> <span id="humidity"></span>%</p>
         <p><strong>Wind Speed:</strong> <span id="windSpeed"></span> m/s</p>
         <p><strong>Pressure:</strong> <span id="pressure"></span> hPa</p>
-        <!-- New "Feels Like" line -->
         <p><strong>Feels Like:</strong> <span id="feelsLike"></span></p>
       </div>
       <div id="sunTimes" class="mt-3 text-center">
         <p><strong>Sunrise:</strong> <span id="sunriseTime"></span></p>
         <p><strong>Sunset:</strong> <span id="sunsetTime"></span></p>
       </div>
-      <!-- New Local Time Display -->
+      <!-- Local Time Display -->
       <div id="localTimeContainer" class="mt-3 text-center d-none">
         <p><strong>Local Time:</strong> <span id="localTime"></span></p>
       </div>
@@ -254,6 +286,11 @@
         <button id="shareWeatherBtn" class="btn btn-outline-success d-none">Share Weather</button>
         <button id="downloadSnapshotBtn" class="btn btn-outline-info ms-2">Download Snapshot</button>
       </div>
+      <!-- Weather Tip Feature (No API required) -->
+      <div class="mt-3 text-center">
+        <button id="showWeatherTipBtn" class="btn btn-outline-info">Show Weather Tip</button>
+      </div>
+      <div id="weatherTipResult" class="mt-3 text-center d-none"></div>
     </section>
 
     <!-- Favorites & Search History Section -->
@@ -273,7 +310,6 @@
           <input type="hidden" name="favorite_city" id="favoriteCityInput" />
         </form>
       </div>
-      <!-- New Clear Buttons -->
       <div class="text-center mt-3">
         <button id="clearFavoritesBtn" class="btn btn-danger btn-sm">Clear Favorites</button>
         <button id="clearSearchHistoryBtn" class="btn btn-danger btn-sm ms-2">Clear Search History</button>
@@ -295,6 +331,33 @@
       </div>
     </section>
 
+    <!-- Detailed Forecast Modal -->
+    <div class="modal fade" id="forecastModal" tabindex="-1" aria-labelledby="forecastModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="forecastModalLabel">Forecast Details</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body" id="modalForecastDetails">
+            <!-- Detailed forecast info will be injected here -->
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Weather News Section -->
+    <section id="newsSection" class="card">
+      <h3 class="text-center">Latest Weather News</h3>
+      <div class="text-center mb-3">
+        <button id="loadNewsBtn" class="btn btn-primary">Load News</button>
+      </div>
+      <div id="weatherNewsSection"></div>
+    </section>
+
     <!-- Map Section -->
     <section id="mapSection" class="card d-none">
       <h3 class="text-center">Map Location</h3>
@@ -309,6 +372,14 @@
         <input type="text" id="chatInput" class="form-control" placeholder="Enter chat message..." />
         <button id="sendChatBtn" class="btn btn-success">Send</button>
       </div>
+      <!-- Emoji Picker -->
+      <div class="emoji-picker text-center">
+        <span class="emoji">😀</span>
+        <span class="emoji">😎</span>
+        <span class="emoji">👍</span>
+        <span class="emoji">🔥</span>
+        <span class="emoji">💧</span>
+      </div>
     </section>
   </div>
 
@@ -322,6 +393,11 @@
       </div>
       <div class="toast-body" id="toastBody"></div>
     </div>
+  </div>
+
+  <!-- Loading Spinner -->
+  <div id="loadingSpinner" class="spinner-overlay">
+    <div class="spinner"></div>
   </div>
 
   <!-- Footer -->
@@ -393,6 +469,12 @@
       const loadingSpinner = document.getElementById("loadingSpinner");
       const mapContainer = document.getElementById("map");
       const mapSection = document.getElementById("mapSection");
+      const showWeatherTipBtn = document.getElementById("showWeatherTipBtn");
+      const weatherTipResult = document.getElementById("weatherTipResult");
+      const loadNewsBtn = document.getElementById("loadNewsBtn");
+      const weatherNewsSection = document.getElementById("weatherNewsSection");
+      const forecastModal = new bootstrap.Modal(document.getElementById('forecastModal'));
+      const modalForecastDetails = document.getElementById("modalForecastDetails");
 
       let forecastChart;
       let typingTimeout;
@@ -437,7 +519,6 @@
       /*** Update Local Time for the Queried City ***/
       function updateLocalTime() {
         if (cityTimezone !== null) {
-          // Calculate local time using the timezone offset (in seconds)
           const localTime = new Date(Date.now() + cityTimezone * 1000);
           localTimeEl.textContent = localTime.toLocaleTimeString();
         }
@@ -502,14 +583,12 @@
           pressureEl.textContent = data.pressure;
           weatherDetails.classList.remove("d-none");
         }
-        // Display "Feels Like" if available
         if (data.feels_like != null) {
           feelsLikeEl.textContent = data.feels_like;
         }
         if (data.sunrise) sunriseTime.textContent = formatTimestamp(data.sunrise);
         if (data.sunset) sunsetTime.textContent = formatTimestamp(data.sunset);
 
-        // --- New Local Time Feature ---
         if (data.timezone) {
           cityTimezone = data.timezone;
           localTimeContainer.classList.remove("d-none");
@@ -522,7 +601,6 @@
 
         weatherResult.classList.remove("d-none");
 
-        // Change background based on weather description
         if (data.weather_info.toLowerCase().includes("sunny")) {
           bodyEl.className = "sunny-bg";
         } else if (data.weather_info.toLowerCase().includes("rain")) {
@@ -547,9 +625,19 @@
               borderColor: "rgba(54, 162, 235, 1)",
               backgroundColor: "rgba(54, 162, 235, 0.2)",
               fill: true,
+              tension: 0.3,
             }],
           },
-          options: { responsive: true, maintainAspectRatio: false },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            onClick: (evt, elements) => {
+              if (elements.length > 0) {
+                const index = elements[0].index;
+                showForecastModal(forecast[index]);
+              }
+            }
+          },
         });
         forecastSection.classList.remove("d-none");
       }
@@ -561,7 +649,6 @@
         sunsetTime.textContent = "";
         shareWeatherBtn.classList.add("d-none");
         mapContainer.classList.add("d-none");
-        const mapSection = document.getElementById("mapSection");
         if (mapSection) { mapSection.classList.add("d-none"); }
         if (map) {
           map.remove();
@@ -572,24 +659,16 @@
         weatherResult.textContent = `Error: ${message}`;
         weatherResult.classList.remove("d-none");
       }
-      // Define showToast using Bootstrap Toast
       function showToast(message) {
-        const toastEl = document.getElementById("liveToast");
-        const toastBody = document.getElementById("toastBody");
-        if (!toastEl || !toastBody) {
-          console.warn("Toast element not found.");
-          return;
-        }
         toastBody.textContent = message;
         new bootstrap.Toast(toastEl).show();
       }
       function showSpinner(show) {
-        const spinner = document.getElementById("loadingSpinner");
-        if (!spinner) {
+        if (!loadingSpinner) {
           console.warn("Spinner element not found.");
           return;
         }
-        spinner.style.display = show ? "flex" : "none";
+        loadingSpinner.style.display = show ? "flex" : "none";
       }
       function enableAddToFavorites(city) {
         if (city) {
@@ -612,13 +691,14 @@
           const li = document.createElement("li");
           const span = document.createElement("span");
           span.textContent = fav;
+          span.style.cursor = "pointer";
           span.addEventListener("click", () => {
             cityInput.value = fav;
             fetchWeather();
           });
           const removeBtn = document.createElement("button");
           removeBtn.textContent = "Remove";
-          removeBtn.className = "btn btn-sm btn-danger";
+          removeBtn.className = "btn btn-sm btn-danger ms-2";
           removeBtn.addEventListener("click", (e) => {
             e.stopPropagation();
             removeFavorite(fav);
@@ -650,6 +730,7 @@
         history.forEach(item => {
           const li = document.createElement("li");
           li.textContent = item;
+          li.style.cursor = "pointer";
           li.addEventListener("click", () => {
             cityInput.value = item;
             fetchWeather();
@@ -684,6 +765,7 @@
                 const suggestionItem = document.createElement("a");
                 suggestionItem.textContent = `${city.city}, ${city.country}`;
                 suggestionItem.href = "#";
+                suggestionItem.classList.add("d-block", "p-1");
                 suggestionItem.addEventListener("click", function (e) {
                   e.preventDefault();
                   cityInput.value = city.city;
@@ -770,16 +852,26 @@
         });
       });
 
-      /*** Map Integration using the Provided Implementation ***/
+      /*** Weather Tip Feature (No API required) ***/
+      const weatherTips = [
+        "Stay hydrated in hot weather.",
+        "Carry an umbrella during rainy days.",
+        "Wear layers to adjust to changing temperatures.",
+        "Protect your skin with sunscreen when it's sunny.",
+        "Check the wind chill factor during winter."
+      ];
+      showWeatherTipBtn.addEventListener("click", () => {
+        const tip = weatherTips[Math.floor(Math.random() * weatherTips.length)];
+        weatherTipResult.innerHTML = `<p>${tip}</p>`;
+        weatherTipResult.classList.remove("d-none");
+      });
+
+      /*** Map Integration ***/
       function displayMap(lat, lon) {
-        // Reveal the map container and its parent section
         mapContainer.classList.remove("d-none");
         mapContainer.style.display = "block";
-        const mapSection = document.getElementById("mapSection");
         if (mapSection) { mapSection.classList.remove("d-none"); }
-        // Remove any previous map instance
         if (map) { map.remove(); }
-        // Create the Leaflet map and set its view
         map = L.map('map').setView([lat, lon], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 19,
@@ -788,9 +880,52 @@
         L.marker([lat, lon]).addTo(map)
           .bindPopup(`Location: ${lastWeatherData ? lastWeatherData.city : ''}`)
           .openPopup();
-        // Use a short delay to force the map to recalculate its size
         setTimeout(() => { map.invalidateSize(); }, 300);
       }
+
+      /*** Detailed Forecast Modal ***/
+      function showForecastModal(forecastData) {
+        modalForecastDetails.innerHTML = `
+          <p><strong>Date:</strong> ${forecastData.date}</p>
+          <p><strong>Temperature:</strong> ${forecastData.temp} ${tempUnit === "imperial" ? "°F" : "°C"}</p>
+          <p><strong>Condition:</strong> ${forecastData.condition || "N/A"}</p>
+        `;
+        forecastModal.show();
+      }
+
+      /*** Weather News Feature ***/
+      loadNewsBtn.addEventListener("click", async () => {
+        weatherNewsSection.innerHTML = "<p>Loading news...</p>";
+        try {
+          const response = await fetch("/api/weather_news");
+          const data = await response.json();
+          if (data.articles && data.articles.length > 0) {
+            weatherNewsSection.innerHTML = "";
+            data.articles.forEach(article => {
+              const articleDiv = document.createElement("div");
+              articleDiv.className = "mb-3 p-2 border-bottom";
+              articleDiv.innerHTML = `
+                <h5><a href="${article.url}" target="_blank">${article.title}</a></h5>
+                <p>${article.description || ""}</p>
+              `;
+              weatherNewsSection.appendChild(articleDiv);
+            });
+          } else {
+            weatherNewsSection.innerHTML = "<p>No news articles found.</p>";
+          }
+        } catch (error) {
+          console.error("Failed to load news:", error);
+          weatherNewsSection.innerHTML = "<p>Error loading news.</p>";
+        }
+      });
+
+      /*** Emoji Picker in Chat ***/
+      document.querySelectorAll(".emoji").forEach(emojiEl => {
+        emojiEl.addEventListener("click", () => {
+          chatInput.value += emojiEl.textContent;
+          chatInput.focus();
+        });
+      });
 
       /*** Event Listeners ***/
       getWeatherBtn.addEventListener("click", fetchWeather);
@@ -829,7 +964,7 @@
       loadFavorites();
       loadSearchHistory();
 
-      // New: Clear Favorites & Search History Buttons
+      // Clear Favorites & Search History Buttons
       document.getElementById("clearFavoritesBtn").addEventListener("click", () => {
         localStorage.removeItem("favorites");
         loadFavorites();
@@ -841,9 +976,8 @@
         showToast("Search history cleared.");
       });
 
-      // New: Auto-detect location on page load if no city is entered
+      // Auto-detect location on page load if no city is entered
       if (!cityInput.value) {
-        // Delay slightly to let the page finish loading
         setTimeout(() => {
           if ("geolocation" in navigator) {
             navigator.geolocation.getCurrentPosition(async (position) => {
