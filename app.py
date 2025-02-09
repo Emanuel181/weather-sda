@@ -247,6 +247,17 @@ def reverse_geocode():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/weather-news', methods=['GET'])
+def get_weather_news():
+    query = "weather OR storm OR climate OR flood OR hurricane OR tornado OR snowfall"
+    url = f"https://newsapi.org/v2/everything?q={query}&language=en&sortBy=publishedAt&apiKey={"b2a9e9e95597438789e690dbc0418517"}"
+
+    response = requests.get(url)
+    if response.status_code == 200:
+        articles = response.json().get("articles", [])[:5]  # Get top 5 latest weather-related articles
+        return jsonify(articles)
+    return jsonify({"error": "Failed to fetch news"}), 500
+
 temperature_thread = threading.Thread(target=broadcast_favorite_city_temperatures)
 temperature_thread.daemon = True
 temperature_thread.start()
